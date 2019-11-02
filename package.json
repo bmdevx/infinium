@@ -1,0 +1,21 @@
+{
+  "name": "infinium",
+  "version": "0.1.0",
+  "description": "Infinity Touch Thermostat Passive Monitor and Controller",
+  "main": "infinium.js",
+  "directories": {
+    "util": "util"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "bmdevx",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "events": "^3.0.0",
+    "express": "^4.17.1",
+    "request": "^2.88.0",
+    "xml2js": "^0.4.22"
+  }
+}
