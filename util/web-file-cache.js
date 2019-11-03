@@ -76,7 +76,7 @@ class WebFileCache {
     }
 
     get(obj, callback) { //sets config for specific request
-        var req, fileName, refresh = false, config = {};
+        var req, fileName, refresh = false, useGetKeys, config = {};
         if (typeof obj === 'string') {
             req = obj;
         } else if (typeof obj === 'object') {

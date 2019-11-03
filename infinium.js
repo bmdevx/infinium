@@ -96,8 +96,8 @@ class Infinium {
                 var processJson = function (err, jsonNewConfig) {
                     if (!err) {
                         infinium.config = jsonNewConfig;
-                        infinium.eventEmitter.emit('config', infinium.config.config);
-                        infinium.eventEmitter.emit('update', 'config', infinium.config);
+                        infinium.eventEmitter.emit('config', clone(infinium.config.config));
+                        infinium.eventEmitter.emit('update', 'config', clone(infinium.config));
                     } else {
                         error(err);
                     }
@@ -150,8 +150,8 @@ class Infinium {
                 var processJson = function (err, jsonNewStatus) {
                     if (!err) {
                         infinium.status = jsonNewStatus;
-                        infinium.eventEmitter.emit('status', infinium.status.status);
-                        infinium.eventEmitter.emit('update', 'status', infinium.status);
+                        infinium.eventEmitter.emit('status', clone(infinium.status.status));
+                        infinium.eventEmitter.emit('update', 'status', clone(infinium.status));
                     }
                 };
 
@@ -182,8 +182,8 @@ class Infinium {
                 var processJson = function (err, jsonNewSystem) {
                     if (!err) {
                         infinium.system = jsonNewSystem;
-                        infinium.eventEmitter.emit('system', infinium.system.system);
-                        infinium.eventEmitter.emit('update', 'system', infinium.system);
+                        infinium.eventEmitter.emit('system', clone(infinium.system.system));
+                        infinium.eventEmitter.emit('update', 'system', clone(infinium.system));
 
                         if (updateConfig) {
                             infinium.updateConfig(xmlBuilder.buildObject({
@@ -435,8 +435,8 @@ class Infinium {
 
             if (req.body.data !== 'error') {
                 var data = parseXml2Json(req.body.data);
-                infinium.eventEmitter.emit(key, data);
-                infinium.eventEmitter.emit('update', key, data);
+                infinium.eventEmitter.emit(key, clone(data));
+                infinium.eventEmitter.emit('update', key, clone(data));
 
                 try {
                     fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
