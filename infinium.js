@@ -3,6 +3,7 @@ const bodyparser = require('body-parser');
 const events = require('events');
 const xml2js = require('xml2js');
 const fs = require('fs');
+const clone = require('./util/clone.js');
 const copyRequest = require('./util/copy-request.js');
 const WebFileCache = require('./util/web-file-cache.js');
 const CarrierWeatherProvider = require('./util/carrier-weather-provider.js');
@@ -21,7 +22,7 @@ const CACHE_DIR = DATA_DIR + 'cache/';
 const LOG_FILE = DATA_DIR + 'infinium.log';
 const CONFIG_XML = DATA_DIR + 'config.xml';
 const STATUS_XML = DATA_DIR + 'status.xml';
-const SYSTEMS_XML = DATA_DIR + 'system.xml';
+const SYSTEM_XML = DATA_DIR + 'system.xml';
 const WEATHER_XML = DATA_DIR + 'weather.xml';
 
 
@@ -52,7 +53,7 @@ class Infinium {
 
         const debug = function (msg, trace = false, logToFile = false) {
             if (debugMode || trace) {
-                console.log(msg);
+                console.log(msg + '\n');
             }
 
             if (logToFile) {
@@ -65,7 +66,7 @@ class Infinium {
         }
 
         const error = function (msg, logToFile = true) {
-            console.error(msg);
+            console.error(msg + '\n');
 
             if (logToFile) {
                 try {
@@ -77,7 +78,7 @@ class Infinium {
         }
 
         const warn = function (msg, logToFile = true) {
-            console.warn(msg);
+            console.warn(msg + '\n');
 
             if (logToFile) {
                 try {
@@ -95,7 +96,7 @@ class Infinium {
                 var processJson = function (err, jsonNewConfig) {
                     if (!err) {
                         infinium.config = jsonNewConfig;
-                        infinium.eventEmitter.emit('config', infinium.config);
+                        infinium.eventEmitter.emit('config', infinium.config.config);
                         infinium.eventEmitter.emit('update', 'config', infinium.config);
                     } else {
                         error(err);
@@ -150,7 +151,7 @@ class Infinium {
                     if (!err) {
                         infinium.status = jsonNewStatus;
                         infinium.eventEmitter.emit('status', infinium.status.status);
-                        infinium.eventEmitter.emit('update', 'status', infinium.status.status);
+                        infinium.eventEmitter.emit('update', 'status', infinium.status);
                     }
                 };
 
@@ -176,17 +177,17 @@ class Infinium {
             }
         }
 
-        infinium.updateSystems = function (newSystems, updateConfig = true) {
-            var process = function (xmlNewSystems, jsonNewSystems) {
-                var processJson = function (err, jsonNewSystems) {
+        infinium.updateSystem = function (newSystem, updateConfig = true) {
+            var process = function (xmlNewSystem, jsonNewSystem) {
+                var processJson = function (err, jsonNewSystem) {
                     if (!err) {
-                        infinium.systems = jsonNewSystems;
-                        infinium.eventEmitter.emit('systems', infinium.systems);
-                        infinium.eventEmitter.emit('update', 'systems', infinium.systems);
+                        infinium.system = jsonNewSystem;
+                        infinium.eventEmitter.emit('system', infinium.system.system);
+                        infinium.eventEmitter.emit('update', 'system', infinium.system);
 
                         if (updateConfig) {
                             infinium.updateConfig(xmlBuilder.buildObject({
-                                config: infinium.systems.system.config
+                                config: infinium.system.system.config
                             }));
                         }
                     } else {
@@ -194,25 +195,25 @@ class Infinium {
                     }
                 };
 
-                if (jsonNewSystems) {
-                    processJson(null, jsonNewSystems);
+                if (jsonNewSystem) {
+                    processJson(null, jsonNewSystem);
                 } else {
-                    parseXml2Json(xmlNewSystems, processJson);
+                    parseXml2Json(xmlNewSystem, processJson);
                 }
 
-                infinium.xmlSystems = xmlNewSystems;
+                infinium.xmlSystem = xmlNewSystem;
 
                 try {
-                    fs.writeFileSync(SYSTEMS_XML, infinium.xmlSystems);
+                    fs.writeFileSync(SYSTEM_XML, infinium.xmlSystem);
                 } catch (e) {
-                    error('Unable to save systems.xml\n' + e);
+                    error('Unable to save system.xml\n' + e);
                 }
             };
 
-            if (typeof newSystems === 'string') {
-                process(newSystems);
+            if (typeof newSystem === 'string') {
+                process(newSystem);
             } else {
-                process(xmlBuilder.buildObject(newSystems), newSystems);
+                process(xmlBuilder.buildObject(newSystem), newSystem);
             }
         }
 
@@ -247,10 +248,10 @@ class Infinium {
             }
         });
 
-        fs.readFile(SYSTEMS_XML, 'utf8', (err, data) => {
+        fs.readFile(SYSTEM_XML, 'utf8', (err, data) => {
             if (!err) {
-                debug('Systems Loaded');
-                infinium.updateSystems(data, false);
+                debug('System Loaded');
+                infinium.updateSystem(data, false);
             }
         });
 
@@ -312,10 +313,10 @@ class Infinium {
             if (infinium.xmlConfig) {
                 debug('Sending config.xml');
                 res.send(xmlConfig);
-            } else if (infinium.xmlSystems) {
-                debug('Sending config from systems.xml');
+            } else if (infinium.xmlSystem) {
+                debug('Sending config from system.xml');
                 var newXmlConfig = xmlBuilder.buildObject({
-                    config: infinium.systems.system.config[0]
+                    config: infinium.system.system.config
                 });
                 res.send(newXmlConfig);
             } else {
@@ -333,21 +334,21 @@ class Infinium {
 
         //Thermostat requesting system
         server.get('/systems/:id', (req, res) => {
-            if (xmlSystems) {
-                debug('Sending systems.xml');
-                res.send(xmlSystems);
+            if (xmlSystem) {
+                debug('Sending system.xml');
+                res.send(xmlSystem);
             } else {
-                debug('systems.xml not found');
+                debug('system.xml not found');
                 res.send('');
             }
         });
 
         //Thermostat reporting system
         server.post('/systems/:id', (req, res) => {
-            debug('Receiving systems.xml');
+            debug('Receiving system.xml');
 
             if (req.body.data !== 'error') {
-                infinium.updateSystems(req.body.data);
+                infinium.updateSystem(req.body.data);
             }
 
             cache.get(copyRequest(req), (err, data, fromWeb) => {
@@ -418,7 +419,7 @@ class Infinium {
                     try {
                         fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
                     } catch (e) {
-                        error(`Unable to save ${key}.xml\n` + e);
+                        error(`Unable to save ${key}.xml` + e);
                     }
                 } else {
                     res.send('');
@@ -440,7 +441,7 @@ class Infinium {
                 try {
                     fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
                 } catch (e) {
-                    error(`Unable to save ${key}.xml\n` + e);
+                    error(`Unable to save ${key}.xml` + e);
                 }
             }
 
@@ -472,40 +473,17 @@ class Infinium {
             if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > weatherRefreshRate)) {
                 infinium.weatherProvider.init(copyRequest(req));
 
-                infinium.weatherProvider.getWeather((err, weather) => {
+                infinium.weatherProvider.getWeather((err, xmlWeather) => {
                     if (!err) {
-                        var xmlWeather;
-                        if (typeof weather === 'string') {
-                            xmlWeather = weather;
-                        } else {
-                            var weatherConfig = {
-                                weather_forecast: {
-                                    timestamp: new DateTime().toISOString(),
-                                    ping: 240,
-                                    days: weather
-                                }
-                            }
+                        res.send(xmlWeather);
+                        infinium.xmlWeather = xmlWeather;
+                        infinium.lastWeatherUpdate = now;
+                        debug(`Sending Weather Data from ${infinium.weatherProvider.getName()}`);
 
-                            try {
-                                xmlWeather = xmlBuilder.buildObject(weatherConfig);
-                            } catch (e) {
-                                error(e);
-                            }
-                        }
-
-                        if (xmlWeather) {
-                            res.send(xmlWeather);
-                            infinium.xmlWeather = xmlWeather;
-                            infinium.lastWeatherUpdate = now;
-                            debug(`Sending Weather Data from ${infinium.weatherProvider.getName()}`);
-
-                            try {
-                                fs.writeFileSync(WEATHER_XML, xmlWeather);
-                            } catch (e) {
-                                error(`Unable to save weather.xml\n` + e);
-                            }
-                        } else {
-                            res.send('');
+                        try {
+                            fs.writeFileSync(WEATHER_XML, xmlWeather);
+                        } catch (e) {
+                            error(`Unable to save weather.xml` + e);
                         }
                     } else {
                         res.send('');
@@ -516,7 +494,6 @@ class Infinium {
                 res.send(infinium.xmlWeather);
                 debug(`Sending Cached Weather Data from ${infinium.weatherProvider.getName()}`);
             }
-
         });
 
         server.get('/:key', (req, res) => {
@@ -526,10 +503,13 @@ class Infinium {
         });
 
         if (apiEnabled) {
-            //add api functions
             server.get('/api/status', (req, res) => {
                 res.send(infinium.status ? infinium.status.status : '');
             });
+
+            //add api functions
+
+            //add websockets for push data
         }
 
         server.all('/*', (req, res) => {
@@ -541,7 +521,7 @@ class Infinium {
             var wu = config.wunderground;
             if (!wu.apiKey) {
                 warn('No Wunderground API Key', true);
-            } else if (!wu.zipCode && !wu.stationID && !(wu.geoCode && wu.geoCode.lat && wu.geoCode.lon)) {
+            } else if (!wu.postalCode && !wu.stationID && !(wu.geoCode && wu.geoCode.lat && wu.geoCode.lon)) {
                 warn('No Wunderground Postal, Station or Geocode', true);
             } else {
                 infinium.weatherProvider = new WundergroundWeatherProvider(wu);
@@ -554,11 +534,11 @@ class Infinium {
     }
 
     getConfig() {
-        return this.parseXml2JsonExplicit(this.config.config);
+        return clone(this.config.config);
     }
 
     getStatus() {
-        return this.parseXml2JsonExplicit(this.status.status);
+        return clone(this.status.status);
     }
 
     onConfigUpdate(callback) {
