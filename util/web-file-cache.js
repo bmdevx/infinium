@@ -97,7 +97,11 @@ class WebFileCache {
             }
 
             if (obj.useGetKeys) {
-                config = obj.config;
+                useGetKeys = obj.useGetKeys;
+            }
+
+            if (obj.fileName) {
+                fileName = obj.fileName;
             }
         }
 
@@ -107,13 +111,13 @@ class WebFileCache {
             req.url = `${req.protocol || 'http'}://${req.host || req.hostname}${req.baseUrl || req.path}`;
         }
 
-        var key = this.requestToKey(req, config.useGetKeys || false);
+        var key = this.requestToKey(req, useGetKeys || false);
         var fcc;
 
         if (this.cache.has(key)) {
             fcc = this.cache.get(key);
 
-            if (config.fileName && !fcc.file.endsWith(config.fileName)) {
+            if (fileName && !fcc.file.endsWith(fileName)) {
                 fcc.file = this.cacheDir + config.fileName;
             }
         } else {
@@ -128,10 +132,14 @@ class WebFileCache {
                 if (!err) {
                     if (res.statusCode === 200) {
                         try {
-                            fs.writeFile(fcc.file, data, 'utf8');
-                            fcc.lastRetrieved = new Date().getTime();
-                            this.saveCache();
-                            callback(null, data, true);
+                            try {
+                                fs.writeFileSync(fcc.file, data, 'utf8');
+                                fcc.lastRetrieved = new Date().getTime();
+                                this.saveCache();
+                                callback(null, data, true);
+                            } catch (e) {
+                                callback(e, data, true);
+                            }
                         } catch (ferr) {
                             callback(ferr);
                         }
