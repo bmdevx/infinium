@@ -63,4 +63,4 @@ typings/
 test/
 data/
 
-package-lock.json
+package-lock.json*
