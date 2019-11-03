@@ -62,7 +62,7 @@ class WebFileCache {
 
 
         if (!fs.existsSync(this.cacheDir)) {
-            fs.mkdirSync(this.cacheDir);
+            fs.mkdirSync(this.cacheDir, { recursive: true });
         } else {
             if (fs.existsSync(this.cacheFilePath)) {
                 var content = fs.readFileSync(this.cacheFilePath, 'utf8');
@@ -84,6 +84,10 @@ class WebFileCache {
                 req = obj.request;
             }
 
+            if (obj.url) {
+                req = obj;
+            }
+
             if (obj.refresh) {
                 refresh = obj.refresh;
             }
@@ -99,6 +103,8 @@ class WebFileCache {
 
         if (!req) {
             throw 'Error: No Request';
+        } else if (typeof req !== 'string' && !req.url.includes(':')) {
+            req.url = `${req.protocol || 'http'}://${req.host || req.hostname}${req.baseUrl || req.path}`;
         }
 
         var key = this.requestToKey(req, config.useGetKeys || false);
@@ -121,20 +127,19 @@ class WebFileCache {
             request(req, (err, res, data) => {
                 if (!err) {
                     if (res.statusCode === 200) {
-                        fs.writeFile(fcc.file, data, 'utf8', (ferr) => {
-                            if (!ferr) {
-                                fcc.lastRetrieved = new Date().getTime();
-                                this.saveCache();
-                                callback(null, data, true);
-                            } else {
-                                callback(ferr);
-                            }
-                        });
+                        try {
+                            fs.writeFile(fcc.file, data, 'utf8');
+                            fcc.lastRetrieved = new Date().getTime();
+                            this.saveCache();
+                            callback(null, data, true);
+                        } catch (ferr) {
+                            callback(ferr);
+                        }
                     } else {
-                        callback('Request Status Error: ' + res.statusCode);
+                        callback(`Request Status Error: ${res.statusCode}`);
                     }
                 } else {
-                    callback(err);
+                    callback(`Request (${req.url}) Error: ${err}`);
                 }
             });
         } else {

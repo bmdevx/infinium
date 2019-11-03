@@ -1,4 +1,9 @@
-//make weather provider interface
+class WeatherProvider {
+    constructor() {
+        if (!this.getWeather || !this.init || !this.getName) {
+            throw 'Invalid Weather Provider';
+        }
+    }
+}
 
-
-//make weather provider that gets data from carrier
+module.exports = WeatherProvider;
