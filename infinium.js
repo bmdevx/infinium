@@ -1,4 +1,5 @@
 const express = require('express');
+const expressWS = require('express-ws');
 const bodyparser = require('body-parser');
 const events = require('events');
 const xml2js = require('xml2js');
@@ -12,6 +13,7 @@ const WundergroundWeatherProvider = require('./util/wunderground-weather-provide
 const DEBUG_MODE = false;
 
 const DEFAULT_LISTEN_PORT = 3000;
+const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
 const DEFAULT_FORWARD_INTERVAL = 15 * 60 * 1000; //in millis
 const DEAFULT_WEATHER_REFRESH_RATE = 15 * 60 * 1000; //in millis
@@ -25,12 +27,19 @@ const STATUS_XML = DATA_DIR + 'status.xml';
 const SYSTEM_XML = DATA_DIR + 'system.xml';
 const WEATHER_XML = DATA_DIR + 'weather.xml';
 
+const WS_STATUS = '/ws/status';
+const WS_CONFIG = '/ws/config';
+const WS_SYSTEM = '/ws/system';
+const WS_UPDATE = '/ws/update';
+const WS_OTHER = '/ws/:key';
+
 
 class Infinium {
     constructor(config = {}) {
         const infinium = this;
 
         const port = config.port || process.env.INFINIUM_PORT || DEFAULT_LISTEN_PORT;
+        const wsEnabled = config.enableWs || process.env.INFINIUM_WS_ENABLED || DEFAULT_WS_ENABLED;
         const apiEnabled = config.enableApi || process.env.INFINIUM_API_ENABLED || DEFAULT_API_ENABLED;
         const forwardInterval = config.forwardInterval || process.env.INFINIUM_FORWARD_INTERVAL || DEFAULT_FORWARD_INTERVAL;
         const weatherRefreshRate = config.weatherRefreshRate || process.env.INFINIUM_WEATHER_REFRESH_RATE || DEAFULT_WEATHER_REFRESH_RATE;
@@ -44,7 +53,6 @@ class Infinium {
 
         const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: forwardInterval });
         const server = express();
-
 
         infinium.eventEmitter = new events.EventEmitter();
         infinium.running = false;
@@ -89,15 +97,20 @@ class Infinium {
             }
         }
 
-
         //Updaters
         infinium.updateConfig = function (newConfig, fromCarrier = false) {
             var process = function (xmlNewConfig, jsonNewConfig) {
                 var processJson = function (err, jsonNewConfig) {
                     if (!err) {
                         infinium.config = jsonNewConfig;
-                        infinium.eventEmitter.emit('config', clone(infinium.config.config));
-                        infinium.eventEmitter.emit('update', 'config', clone(infinium.config));
+
+                        const config = clone(infinium.config);
+                        infinium.eventEmitter.emit('config', config.config);
+                        infinium.eventEmitter.emit('update', 'config', config);
+
+                        if (infinium.wsBroadcast) {
+                            infinium.wsBroadcast(WS_CONFIG, config.config);
+                        }
                     } else {
                         error(err);
                     }
@@ -150,8 +163,14 @@ class Infinium {
                 var processJson = function (err, jsonNewStatus) {
                     if (!err) {
                         infinium.status = jsonNewStatus;
-                        infinium.eventEmitter.emit('status', clone(infinium.status.status));
-                        infinium.eventEmitter.emit('update', 'status', clone(infinium.status));
+
+                        const status = clone(infinium.status);
+                        infinium.eventEmitter.emit('status', status.status);
+                        infinium.eventEmitter.emit('update', 'status', status);
+
+                        if (infinium.wsBroadcast) {
+                            infinium.wsBroadcast(WS_STATUS, status.status);
+                        }
                     }
                 };
 
@@ -182,8 +201,14 @@ class Infinium {
                 var processJson = function (err, jsonNewSystem) {
                     if (!err) {
                         infinium.system = jsonNewSystem;
-                        infinium.eventEmitter.emit('system', clone(infinium.system.system));
-                        infinium.eventEmitter.emit('update', 'system', clone(infinium.system));
+
+                        const system = clone(infinium.system);
+                        infinium.eventEmitter.emit('system', system.system);
+                        infinium.eventEmitter.emit('update', 'system', system);
+
+                        if (infinium.wsBroadcast) {
+                            infinium.wsBroadcast(WS_SYSTEM, system.system);
+                        }
 
                         if (updateConfig) {
                             infinium.updateConfig(xmlBuilder.buildObject({
@@ -435,8 +460,17 @@ class Infinium {
 
             if (req.body.data !== 'error') {
                 var data = parseXml2Json(req.body.data);
-                infinium.eventEmitter.emit(key, clone(data));
-                infinium.eventEmitter.emit('update', key, clone(data));
+
+                infinium.eventEmitter.emit(key, data);
+                infinium.eventEmitter.emit('update', key, data);
+
+                if (infinium.wsBroadcast) {
+                    infinium.wsBroadcast(`/ws/${key}`, data);
+                    infinium.wsBroadcast(WS_OTHER, {
+                        id: key,
+                        data: data
+                    });
+                }
 
                 try {
                     fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
@@ -508,13 +542,72 @@ class Infinium {
             });
 
             //add api functions
+        }
 
-            //add websockets for push data
+        if (wsEnabled) {
+            infinium.wsServer = expressWS(server);
+
+            infinium.wsBroadcast = function (path, data) {
+                try {
+                    const clients = infinium.wsServer.getWss(path).clients;
+
+                    if (clients && clients.size > 0) {
+                        clients.forEach((client) => {
+                            client.send(JSON.stringify(data));
+                        });
+                        debug(`WS Sending '${path}' to ${clients.size} client${clients.size > 1 ? 's' : ''}`);
+                    }
+                } catch (e) {
+                    error(`WS Broadcast (${path}) ` + e);
+                }
+            }
+
+
+            server.ws(WS_STATUS, (ws, req) => {
+                ws.on('close', () => {
+                    debug(`Client disconnected from ${WS_STATUS}`);
+                });
+
+                debug(`Client connected to ${WS_STATUS}`);
+            });
+
+            server.ws(WS_SYSTEM, (ws, req) => {
+                ws.on('close', () => {
+                    debug(`Client disconnected from ${WS_SYSTEM}`);
+                });
+
+                debug(`Client connected to ${WS_SYSTEM}`);
+            });
+
+            server.ws(WS_CONFIG, (ws, req) => {
+                ws.on('close', () => {
+                    debug(`Client disconnected from ${WS_CONFIG}`);
+                });
+
+                debug(`Client connected to ${WS_CONFIG}`);
+            });
+
+            server.ws(WS_UPDATE, (ws, req) => {
+                ws.on('close', () => {
+                    debug(`Client disconnected from ${WS_UPDATE}`);
+                });
+
+                debug(`Client connected to ${WS_UPDATE}`);
+            });
+
+            server.ws(WS_OTHER, (ws, req) => {
+                const key = req.params['key'];
+                ws.on('close', () => {
+                    debug(`Client disconnected from ${key}`);
+                });
+
+                debug(`Client connected to ${key}`);
+            });
         }
 
         server.all('/*', (req, res) => {
             debug(`Unknown Request: ${req.host}${req.originalUrl}`);
-        })
+        });
 
 
         if (config.wunderground) {
@@ -533,6 +626,7 @@ class Infinium {
         }
     }
 
+
     getConfig() {
         return clone(this.config.config);
     }
@@ -545,16 +639,32 @@ class Infinium {
         this.eventEmitter.on('config', callback);
     }
 
+    removeOnConfigUpdate(callback) {
+        this.eventEmitter.removeListener('config', callback);
+    }
+
     onStatusUpdate(callback) {
         this.eventEmitter.on('status', callback);
+    }
+
+    removeOnStatusUpdate(callback) {
+        this.eventEmitter.removeListener('status', callback);
     }
 
     onUpdate(callback) {
         this.eventEmitter.on('update', callback);
     }
 
+    removeOnUpdate(callback) {
+        this.eventEmitter.removeListener('update', callback);
+    }
+
     on(event, callback) {
         this.eventEmitter.on(event, callback);
+    }
+
+    removeOn(event, callback) {
+        this.eventEmitter.removeListener(event, callback);
     }
 
 

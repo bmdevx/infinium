@@ -132,22 +132,18 @@ class WebFileCache {
                 if (!err) {
                     if (res.statusCode === 200) {
                         try {
-                            try {
-                                fs.writeFileSync(fcc.file, data, 'utf8');
-                                fcc.lastRetrieved = new Date().getTime();
-                                this.saveCache();
-                                callback(null, data, true);
-                            } catch (e) {
-                                callback(e, data, true);
-                            }
-                        } catch (ferr) {
-                            callback(ferr);
+                            fs.writeFileSync(fcc.file, data, 'utf8');
+                            fcc.lastRetrieved = new Date().getTime();
+                            this.saveCache();
+                            callback(null, data, true);
+                        } catch (e) {
+                            callback(e, data, true);
                         }
                     } else {
-                        callback(`Request Status Error: ${res.statusCode}`);
+                        callback(`Request Status Error (${req.url}): ${res.statusCode}`);
                     }
                 } else {
-                    callback(`Request (${req.url}) Error: ${err}`);
+                    callback(`Request Error (${req.url}): ${err}`);
                 }
             });
         } else {
