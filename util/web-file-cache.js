@@ -18,13 +18,13 @@ class WebFileCache {
 
         this.cacheFilePath = this.cacheDir + CACHE_FILE_NAME;
 
-        this.requestToKey = function (req, useGetKeys = false) {
-            var url = (typeof req === "object") ? req.url : ((typeof req === "string") ? req : '');
+        this.requestToKey = function (config) {
+            var url = (typeof config.req === "object") ? config.req.url : ((typeof config.req === "string") ? config.req : '');
 
-            if (url == '')
+            if (config.url == '')
                 throw 'Error: Invalid URL';
 
-            if (useGetKeys) {
+            if (config.useGetKeys) {
                 var qIndex = url.indexOf('?');
 
                 if (qIndex < 0) {
@@ -76,32 +76,34 @@ class WebFileCache {
     }
 
     get(obj, callback) { //sets config for specific request
-        var req, fileName, refresh = false, useGetKeys, config = {};
+        var req, config = { refresh: false };
         if (typeof obj === 'string') {
             req = obj;
+            config.req = req;
         } else if (typeof obj === 'object') {
             if (obj.request) {
                 req = obj.request;
+                config.req = req;
             }
 
             if (obj.url) {
-                req = obj;
+                config.url = obj.url;
             }
 
             if (obj.refresh) {
-                refresh = obj.refresh;
+                config.refresh = obj.refresh;
             }
 
             if (obj.passRequest) {
-                passRequest = obj.passRequest;
+                config.passRequest = obj.request;
             }
 
             if (obj.useGetKeys) {
-                useGetKeys = obj.useGetKeys;
+                config.useGetKeys = obj.useGetKeys;
             }
 
             if (obj.fileName) {
-                fileName = obj.fileName;
+                config.fileName = obj.fileName;
             }
         }
 
@@ -111,14 +113,14 @@ class WebFileCache {
             req.url = `${req.protocol || 'http'}://${req.host || req.hostname}${req.baseUrl || req.path}`;
         }
 
-        var key = this.requestToKey(req, useGetKeys || false);
+        var key = this.requestToKey(config);
         var fcc;
 
         if (this.cache.has(key)) {
             fcc = this.cache.get(key);
 
             if (fileName && !fcc.file.endsWith(fileName)) {
-                fcc.file = this.cacheDir + config.fileName;
+                fcc.file = this.cacheDir + fileName;
             }
         } else {
             fcc = this.createFileCacheConfig(key, config);
@@ -127,7 +129,7 @@ class WebFileCache {
 
         var time = (new Date().getTime() - fcc.lastRetrieved);
 
-        if (refresh || (time > fcc.forwardInterval) || !fs.exists(fcc.file)) {
+        if (config.refresh || (time > fcc.forwardInterval) || !fs.exists(fcc.file)) {
             request(req, (err, res, data) => {
                 if (!err) {
                     if (res.statusCode === 200) {

@@ -80,7 +80,7 @@ class WundergroundWeatherProvier extends WeatherProvider {
 
         if (!config.apiKey) {
             throw 'No Wunderground API Key';
-        } else if (!config.postalCode && !config.stationID && !(config.geoCode && config.geoCode.lat && config.geoCode.lon)) {
+        } else if (!config.postalCode && !(config.geoCode && config.geoCode.lat && config.geoCode.lon)) {
             throw 'No Wunderground Postal, Station or Geocode';
         }
 

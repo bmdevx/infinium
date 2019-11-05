@@ -1,4 +1,4 @@
-function clone(obj) {
+function clone(obj, strip$ = false) {
     var copy;
 
     // Handle the 3 simple types, and null or undefined
@@ -24,7 +24,8 @@ function clone(obj) {
     if (obj instanceof Object) {
         copy = {};
         for (var attr in obj) {
-            if (obj.hasOwnProperty(attr)) copy[attr] = clone(obj[attr]);
+            if (obj.hasOwnProperty(attr) && (!strip$ || attr !== '$'))
+                copy[attr] = clone(obj[attr]);
         }
         return copy;
     }

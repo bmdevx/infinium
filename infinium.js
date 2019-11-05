@@ -15,10 +15,12 @@ const DEBUG_MODE = false;
 const DEFAULT_LISTEN_PORT = 3000;
 const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
+const DEFAULT_KEEP_OTHER_HISTORY = false;
 const DEFAULT_FORWARD_INTERVAL = 15 * 60 * 1000; //in millis
 const DEAFULT_WEATHER_REFRESH_RATE = 15 * 60 * 1000; //in millis
 
 const DATA_DIR = process.env.INFINIUM_DATA || '/data/';
+const DATA_HISTORY_DIR = process.env.INFINIUM_DATA || '/data/history/';
 const CACHE_DIR = DATA_DIR + 'cache/';
 
 const LOG_FILE = DATA_DIR + 'infinium.log';
@@ -31,7 +33,6 @@ const WS_STATUS = '/ws/status';
 const WS_CONFIG = '/ws/config';
 const WS_SYSTEM = '/ws/system';
 const WS_UPDATE = '/ws/update';
-const WS_OTHER = '/ws/:key';
 
 
 class Infinium {
@@ -41,6 +42,7 @@ class Infinium {
         const port = config.port || process.env.INFINIUM_PORT || DEFAULT_LISTEN_PORT;
         const wsEnabled = config.enableWs || process.env.INFINIUM_WS_ENABLED || DEFAULT_WS_ENABLED;
         const apiEnabled = config.enableApi || process.env.INFINIUM_API_ENABLED || DEFAULT_API_ENABLED;
+        const keepOtherHistory = config.keepOtherHistory || process.env.INFINIUM_KEEP_OTHER_HISTORY || DEFAULT_KEEP_OTHER_HISTORY;
         const forwardInterval = config.forwardInterval || process.env.INFINIUM_FORWARD_INTERVAL || DEFAULT_FORWARD_INTERVAL;
         const weatherRefreshRate = config.weatherRefreshRate || process.env.INFINIUM_WEATHER_REFRESH_RATE || DEAFULT_WEATHER_REFRESH_RATE;
         const debugMode = config.debugMode || process.env.INFINIUM_DEBUG_MODE || DEBUG_MODE;
@@ -61,7 +63,7 @@ class Infinium {
 
         const debug = function (msg, trace = false, logToFile = false) {
             if (debugMode || trace) {
-                console.log(msg + '\n');
+                console.log(msg);
             }
 
             if (logToFile) {
@@ -74,7 +76,7 @@ class Infinium {
         }
 
         const error = function (msg, logToFile = true) {
-            console.error(msg + '\n');
+            console.error(msg);
 
             if (logToFile) {
                 try {
@@ -97,6 +99,23 @@ class Infinium {
             }
         }
 
+        const stringifyCirc = function (obj) {
+            const getCircularReplacer = () => {
+                const seen = new WeakSet();
+                return (key, value) => {
+                    if (typeof value === "object" && value !== null) {
+                        if (seen.has(value)) {
+                            return;
+                        }
+                        seen.add(value);
+                    }
+                    return value;
+                };
+            };
+
+            return JSON.stringify(obj, getCircularReplacer());
+        };
+
         //Updaters
         infinium.updateConfig = function (newConfig, fromCarrier = false) {
             var process = function (xmlNewConfig, jsonNewConfig) {
@@ -104,7 +123,7 @@ class Infinium {
                     if (!err) {
                         infinium.config = jsonNewConfig;
 
-                        const config = clone(infinium.config);
+                        const config = clone(infinium.config, true);
                         infinium.eventEmitter.emit('config', config.config);
                         infinium.eventEmitter.emit('update', 'config', config);
 
@@ -164,7 +183,7 @@ class Infinium {
                     if (!err) {
                         infinium.status = jsonNewStatus;
 
-                        const status = clone(infinium.status);
+                        const status = clone(infinium.status, true);
                         infinium.eventEmitter.emit('status', status.status);
                         infinium.eventEmitter.emit('update', 'status', status);
 
@@ -202,7 +221,7 @@ class Infinium {
                     if (!err) {
                         infinium.system = jsonNewSystem;
 
-                        const system = clone(infinium.system);
+                        const system = clone(infinium.system, true);
                         infinium.eventEmitter.emit('system', system.system);
                         infinium.eventEmitter.emit('update', 'system', system);
 
@@ -440,15 +459,10 @@ class Infinium {
             cache.get({ request: copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
-
-                    try {
-                        fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
-                    } catch (e) {
-                        error(`Unable to save ${key}.xml` + e);
-                    }
                 } else {
                     res.send('');
                     error(err);
+                    debug(`Request: ${stringifyCirc(req)}`, false, true);
                 }
             });
         });
@@ -466,7 +480,7 @@ class Infinium {
 
                 if (infinium.wsBroadcast) {
                     infinium.wsBroadcast(`/ws/${key}`, data);
-                    infinium.wsBroadcast(WS_OTHER, {
+                    infinium.wsBroadcast(WS_UPDATE, {
                         id: key,
                         data: data
                     });
@@ -474,6 +488,17 @@ class Infinium {
 
                 try {
                     fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
+                } catch (e) {
+                    error(`Unable to save ${key}.xml` + e);
+                }
+
+                try {
+                    fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
+
+                    if (keepOtherHistory) {
+                        var dt = new Date().toISOString().replace('T', '_').replace('Z', '');
+                        fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
+                    }
                 } catch (e) {
                     error(`Unable to save ${key}.xml` + e);
                 }
@@ -485,6 +510,7 @@ class Infinium {
                 } else {
                     res.send('');
                     error(`Other Data (${key}) - ${err}`);
+                    debug(`Request: ${stringifyCirc(req)}`, false, true);
                 }
             });
         });
@@ -497,6 +523,7 @@ class Infinium {
                 } else {
                     res.send('');
                     error('manifest- ' + err);
+                    debug(`Request: ${stringifyCirc(req)}`, false, true);
                 }
             });
         });
@@ -594,15 +621,6 @@ class Infinium {
 
                 debug(`Client connected to ${WS_UPDATE}`);
             });
-
-            server.ws(WS_OTHER, (ws, req) => {
-                const key = req.params['key'];
-                ws.on('close', () => {
-                    debug(`Client disconnected from ${key}`);
-                });
-
-                debug(`Client connected to ${key}`);
-            });
         }
 
         server.all('/*', (req, res) => {
@@ -628,11 +646,11 @@ class Infinium {
 
 
     getConfig() {
-        return clone(this.config.config);
+        return clone(this.config.config, true);
     }
 
     getStatus() {
-        return clone(this.status.status);
+        return clone(this.status.status, true);
     }
 
     onConfigUpdate(callback) {

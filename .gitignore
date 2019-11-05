@@ -64,3 +64,4 @@ test/
 data/
 
 package-lock.json*
+.vscode
