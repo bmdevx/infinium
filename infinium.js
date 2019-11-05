@@ -4,6 +4,7 @@ const bodyparser = require('body-parser');
 const events = require('events');
 const xml2js = require('xml2js');
 const fs = require('fs');
+const utils = require('./util/utils.js')
 const clone = require('./util/clone.js');
 const copyRequest = require('./util/copy-request.js');
 const WebFileCache = require('./util/web-file-cache.js');
@@ -31,8 +32,16 @@ const WEATHER_XML = DATA_DIR + 'weather.xml';
 
 const WS_STATUS = '/ws/status';
 const WS_CONFIG = '/ws/config';
-const WS_SYSTEM = '/ws/system';
 const WS_UPDATE = '/ws/update';
+
+const Activities = {
+    Home: 'home',
+    Away: 'away',
+    Sleep: 'sleep',
+    Wake: 'wake',
+    Manual: 'manual',
+    All: ['home', 'away', 'sleep', 'wake', 'manual']
+}
 
 
 class Infinium {
@@ -47,7 +56,7 @@ class Infinium {
         const weatherRefreshRate = config.weatherRefreshRate || process.env.INFINIUM_WEATHER_REFRESH_RATE || DEAFULT_WEATHER_REFRESH_RATE;
         const debugMode = config.debugMode || process.env.INFINIUM_DEBUG_MODE || DEBUG_MODE;
 
-        const xmlBuilder = new xml2js.Builder();
+        const xmlBuilder = new xml2js.Builder({ headless: true });
         const xmlParser = new xml2js.Parser({ explicitArray: false });
         const parseXml2Json = function (xml, callback) {
             xmlParser.parseString(xml, callback);
@@ -59,6 +68,7 @@ class Infinium {
         infinium.eventEmitter = new events.EventEmitter();
         infinium.running = false;
         infinium.changes = false;
+        infinium.loading = true;
 
 
         const debug = function (msg, trace = false, logToFile = false) {
@@ -117,7 +127,7 @@ class Infinium {
         };
 
         //Updaters
-        infinium.updateConfig = function (newConfig, fromCarrier = false) {
+        infinium.updateConfig = function (newConfig, fromCarrier = false, loading = false) {
             var process = function (xmlNewConfig, jsonNewConfig) {
                 var processJson = function (err, jsonNewConfig) {
                     if (!err) {
@@ -143,10 +153,12 @@ class Infinium {
 
                 infinium.xmlConfig = xmlNewConfig;
 
-                try {
-                    fs.writeFileSync(CONFIG_XML, infinium.xmlConfig);
-                } catch (e) {
-                    error('Unable to save config.xml' + e);
+                if (!loading) {
+                    try {
+                        fs.writeFileSync(CONFIG_XML, infinium.xmlConfig);
+                    } catch (e) {
+                        error('Unable to save config.xml' + e);
+                    }
                 }
             };
 
@@ -173,11 +185,15 @@ class Infinium {
                     process(newConfig);
                 }
             } else {
+                if (newConfig.$) {
+                    newConfig.config.$ = newConfig.$;
+                    delete newConfig.$;
+                }
                 process(xmlBuilder.buildObject(newConfig), newConfig);
             }
         }
 
-        infinium.updateStatus = function (newStatus) {
+        infinium.updateStatus = function (newStatus, loading = false) {
             var process = function (xmlNewStatus, jsonNewStatus) {
                 var processJson = function (err, jsonNewStatus) {
                     if (!err) {
@@ -201,10 +217,12 @@ class Infinium {
 
                 infinium.xmlStatus = xmlNewStatus;
 
-                try {
-                    fs.writeFileSync(STATUS_XML, infinium.xmlStatus);
-                } catch (e) {
-                    error('Unable to save status.xml' + e);
+                if (!loading) {
+                    try {
+                        fs.writeFileSync(STATUS_XML, infinium.xmlStatus);
+                    } catch (e) {
+                        error('Unable to save status.xml' + e);
+                    }
                 }
             };
 
@@ -215,25 +233,13 @@ class Infinium {
             }
         }
 
-        infinium.updateSystem = function (newSystem, updateConfig = true) {
+        infinium.updateSystem = function (newSystem, loading = false) {
             var process = function (xmlNewSystem, jsonNewSystem) {
                 var processJson = function (err, jsonNewSystem) {
                     if (!err) {
                         infinium.system = jsonNewSystem;
 
-                        const system = clone(infinium.system, true);
-                        infinium.eventEmitter.emit('system', system.system);
-                        infinium.eventEmitter.emit('update', 'system', system);
-
-                        if (infinium.wsBroadcast) {
-                            infinium.wsBroadcast(WS_SYSTEM, system.system);
-                        }
-
-                        if (updateConfig) {
-                            infinium.updateConfig(xmlBuilder.buildObject({
-                                config: infinium.system.system.config
-                            }));
-                        }
+                        infinium.updateConfig(clone(infinium.system.system));
                     } else {
                         error(err);
                     }
@@ -247,10 +253,12 @@ class Infinium {
 
                 infinium.xmlSystem = xmlNewSystem;
 
-                try {
-                    fs.writeFileSync(SYSTEM_XML, infinium.xmlSystem);
-                } catch (e) {
-                    error('Unable to save system.xml\n' + e);
+                if (!loading) {
+                    try {
+                        fs.writeFileSync(SYSTEM_XML, infinium.xmlSystem);
+                    } catch (e) {
+                        error('Unable to save system.xml\n' + e);
+                    }
                 }
             };
 
@@ -261,6 +269,11 @@ class Infinium {
             }
         }
 
+        infinium.applySystemChanges = function (system) {
+            infinium.updateSystem(system);
+            infinium.changes = true;
+            debug('Applied Changes to System');
+        }
 
         //Express Start/Stop
         infinium.startServer = function () {
@@ -288,21 +301,21 @@ class Infinium {
         fs.readFile(CONFIG_XML, 'utf8', (err, data) => {
             if (!err) {
                 debug('Config Loaded');
-                infinium.updateConfig(data);
+                infinium.updateConfig(data, false, true);
             }
         });
 
         fs.readFile(SYSTEM_XML, 'utf8', (err, data) => {
             if (!err) {
                 debug('System Loaded');
-                infinium.updateSystem(data, false);
+                infinium.updateSystem(data, true);
             }
         });
 
         fs.readFile(STATUS_XML, 'utf8', (err, data) => {
             if (!err) {
                 debug('Status Loaded');
-                infinium.updateStatus(data);
+                infinium.updateStatus(data, true);
             }
         });
 
@@ -367,12 +380,15 @@ class Infinium {
                 cache.get({ request: copyRequest(req), fileName: CONFIG_XML }, (err, data, fromWeb) => {
                     if (!err) {
                         infinium.updateConfig(data, true);
+                        res.send(infinium.xmlConfig);
                     } else {
                         res.send('');
                         error(err);
                     }
                 });
             }
+
+            this.changes = false;
         });
 
 
@@ -435,8 +451,9 @@ class Infinium {
                                 res.send(buildResponse());
                                 error('Received Status Response from Carrier but it Failed to parse.');
                                 debug('Sent Status Response - Changes: ' + infinium.changes);
-                                infinium.changes = false;
                             }
+
+                            infinium.changes = false;
                         })
 
                         infinium.sendStatusToCarrier = null;
@@ -446,9 +463,9 @@ class Infinium {
                 });
             } else {
                 res.send(buildResponse());
-
-                debug('Sent Status Response - Changes: ' + infinium.changes);
                 infinium.changes = false;
+
+                debug('Sending Status Response - Changes: ' + infinium.changes);
             }
         });
 
@@ -598,14 +615,6 @@ class Infinium {
                 debug(`Client connected to ${WS_STATUS}`);
             });
 
-            server.ws(WS_SYSTEM, (ws, req) => {
-                ws.on('close', () => {
-                    debug(`Client disconnected from ${WS_SYSTEM}`);
-                });
-
-                debug(`Client connected to ${WS_SYSTEM}`);
-            });
-
             server.ws(WS_CONFIG, (ws, req) => {
                 ws.on('close', () => {
                     debug(`Client disconnected from ${WS_CONFIG}`);
@@ -693,6 +702,36 @@ class Infinium {
     stop() {
         this.stopServer();
     }
+
+
+    setHold(zone, hold = true, activity = 'home', holdUntil = null, callback) {
+        if ((Number.isInteger(zone) || (typeof (zone = parseInt(zone)) === 'number')) && !isNaN(zone) && zone > 0 && zone < 9) {
+            if (typeof hold === 'boolean' || hold === 'on' || hold === 'off') {
+                if (Activities.All.includes(activity)) {
+                    if (utils.validateTime(holdUntil)) {
+                        var system = clone(this.system);
+                        var zone = system.system.config.zones.zone[zone - 1];
+
+                        zone.hold = (typeof hold === 'boolean') ? (hold === true ? 'on' : 'off') : hold;
+                        zone.holdActivity = activity;
+                        zone.otmr = (holdUntil) ? holdUntil : '';
+
+                        this.applySystemChanges(system);
+                    } else {
+                        callback('invalid hold until value: ' + holdUntil);
+                    }
+                } else {
+                    callback('invalid avtivity value: ' + activity);
+                }
+            } else {
+                callback('invalid hold value: ' + zone);
+            }
+        } else {
+            callback('invalid zone: ' + zone);
+        }
+    }
+
+
 }
 
 module.exports = Infinium;

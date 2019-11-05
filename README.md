@@ -57,8 +57,7 @@ INFINIUM_DEBUG_MODE = false
 All data is in JSON Format
 ```
 /ws/status      Gets Status
-/ws/system      Gets System
-/ws/config      Gets Status
+/ws/config      Gets Config
 /ws/update      Gets all data in the format of { id: 'name of data', data: data }
 /ws/:key        Gets specic data where ':key' is the data type.
 ```
