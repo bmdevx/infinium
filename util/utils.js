@@ -1,4 +1,14 @@
 class utils {
+    static validateZone(zone) {
+        return ((Number.isInteger(zone) || (typeof (zone = parseInt(zone)) === 'number')) &&
+            !isNaN(zone) && zone > 0 && zone < 9) ? zone : 0;
+    }
+
+    static validateTemp(temp, systemMinTemp, systemMaxTemp) {
+        return (temp === null || ((Number.isInteger(temp) || (typeof (temp = parseInt(temp)) === 'number')) &&
+            !isNaN(temp) && temp >= systemMinTemp && temp <= systemMaxTemp)) ? temp : 0;
+    }
+
     static validateTime(time) {
         if (typeof time === 'string') {
             var parts = time.split(':');
@@ -14,6 +24,25 @@ class utils {
 
         return false;
     };
+
+    
+    static getZone(system, zone) {
+        return system.config.zones.find(z => {
+            return z.$ && z.$.id === zone
+        });
+    }
+    
+    static getActivity(system, zone, activityName) {
+        return getZone(system, zone).activities.find(a => {
+            return a.$ && a.$.id === activityName
+        });
+    }
+    
+    static getSchedule(system, zone, day) {
+        return getZone(system, zone).program.find(d => {
+            return d.$ && d.$.id === day
+        });
+    }
 }
 
 module.exports = utils;

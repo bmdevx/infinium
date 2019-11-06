@@ -43,6 +43,14 @@ const Activities = {
     All: ['home', 'away', 'sleep', 'wake', 'manual']
 }
 
+const FanModes = {
+    Auto: 'off',
+    Low: 'low',
+    Med: 'med',
+    High: 'high',
+    All: [ 'off', 'low', 'med', 'high' ]
+}
+
 
 class Infinium {
     constructor(config = {}) {
@@ -705,12 +713,12 @@ class Infinium {
 
 
     setHold(zone, hold = true, activity = 'home', holdUntil = null, callback) {
-        if ((Number.isInteger(zone) || (typeof (zone = parseInt(zone)) === 'number')) && !isNaN(zone) && zone > 0 && zone < 9) {
+        if (zone = utils.validateZone(zone)) {
             if (typeof hold === 'boolean' || hold === 'on' || hold === 'off') {
                 if (Activities.All.includes(activity)) {
                     if (utils.validateTime(holdUntil)) {
                         var system = clone(this.system);
-                        var zone = system.system.config.zones.zone[zone - 1];
+                        var zone = utils.getZone(system, zone);
 
                         zone.hold = (typeof hold === 'boolean') ? (hold === true ? 'on' : 'off') : hold;
                         zone.holdActivity = activity;
@@ -731,6 +739,50 @@ class Infinium {
         }
     }
 
+    setActivity(zone, activity, clsp = null, htsp = null, fanMode = null) {
+        const system = clone(this.system);
+
+        if (zone = utils.validateZone(zone)) {
+            if (Activities.All.includes(activity)) {
+                if (clsp = utils.validateTemp(clsp, system.config.vacmint, system.config.vacmaxt)) {
+                    if (htsp = utils.validateTemp(htsp, system.config.vacmint, system.config.vacmaxt)) {
+                        if (fanMode === null || FanModes.All.includes(fanMode)) {
+                            activity = utils.getActivity(system, zone, activity);
+
+                            if (activity) {
+                                if (clsp !== null) {
+                                    activity.clsp = clsp;
+                                }
+
+                                if (htsp !== null) {
+                                    activity.htsp = htsp;
+                                }
+                                
+                                if (fanMode !== null) {
+                                    activity.fan = fanMode;
+                                }
+
+                                this.applySystemChanges(system);
+                            } else {
+                                callback('can not find activity in config');
+                            }
+                        } else {
+                            callback('invalid fan mode: ' + fanMode);
+                        }
+                    } else {
+                        callback('invalid heating setpoint: ' + htsp);
+                    }
+                } else {
+                    callback('invalid cooling setpoint: ' + clsp);
+                }
+            } else {
+                callback('invalid avtivity value: ' + activity);
+            }
+            
+        } else {
+            callback('invalid zone: ' + zone);
+        }
+    }
 
 }
 

@@ -50,8 +50,8 @@ class WebFileCache {
             return {
                 forwardInterval: (config.forwardInterval || this.forwardInterval),
                 lastRetrieved: config.lastRetrieved || 0,
-                file: (config.cacheDir || this.cacheDir) +
-                    (config.fileName || key.replace(/[/\\|&;$%@"<>()+,]/g, "").replace(':', '-') + '.cache')
+                file: config.fileName || (config.cacheDir || this.cacheDir) +
+                    (key.replace(/[/\\|&;$%@"<>()+,]/g, "").replace(':', '-') + '.cache')
             }
         }
 
