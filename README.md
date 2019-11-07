@@ -53,6 +53,54 @@ INFINIUM_FORWARD_INTERVAL = 90000
 INFINIUM_WEATHER_REFRESH_RATE = 90000
 INFINIUM_DEBUG_MODE = false
 ```
+
+
+### REST
+All data is in JSON Format
+```
+GET   /api/status                   Retreives System Status
+GET   /api/activity/:zone/:activity Retreives Activity Information
+GET   /api/schedule/:zone           Retreives Schedule for the entire Week
+GET   /api/schedule/:zone/:day      Retreives Schedule for a specific Day
+GET   /api/zone/:zone               Retreives Zone Information
+
+POST  /api/activity/:zone/:activity Updates Activity
+      *POST Data Options*
+          clsp: (int) Cooling Set Point, value between min and max
+          htsp: (int) Heat Set Point, value between min and max temp
+          fan:  (string) Fan Level
+                  'off' (AKA auto mode) Fan is off unless heating/cooling
+                  'low'  Low Fan Speed
+                  'med'  Medium Fan Speed
+                  'high' High Fan Speed
+
+POST  /api/hold/:zone               Puts a hold on a Zone
+      *POST Data Options*
+          activity:  (string) Activity for which the system will hold
+                       'home' (default), 'away', 'sleep', 'wake', 'manual'
+          holdUntil: (string) Time in HH:MM format for which the system will hold the current activity
+                       ex: '18:30' (6:30PM)
+                       
+POST  /api/schedule/:zone
+      Required JSON Array for 'schedule' value:
+      [
+        {
+          id: 'Monday', //day of week
+          periods: [
+            {
+              id: 1,            // period in schedule of day (1-5)
+              activity: 'home', // 'home', 'away', 'sleep', 'wake', 'manual'
+              time: '18:30',    // time you want the activity to be ready by
+              enabled: 'on'     // if you want the period to be enabled ('on' or 'off')
+            },
+            ...
+          ]
+        },
+        ...
+      ]
+```
+
+
 ### WebSocket
 All data is in JSON Format
 ```

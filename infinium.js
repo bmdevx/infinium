@@ -621,15 +621,14 @@ class Infinium {
                 res.send(infinium.status ? utils.adjustIds(infinium.status.status) : '');
             });
 
-            //add api functions
-            server.get('/api/activity', (req, res) => {
+            server.get('/api/activity/:zone/:activity', (req, res) => {
                 var zone;
-                if (!(zone = utils.validateZone(req.query.zone))) {
+                if (!(zone = utils.validateZone(req.params.zone))) {
                     res.send('Invalid Zone');
-                } else if (!Activities.All.includes(req.query.activity)) {
+                } else if (!Activities.All.includes(req.params.activity.toLowerCase())) {
                     res.send('Invalid Activity');
                 } else {
-                    var activity = utils.adjustIds(utils.getActivity(this.system, zone, req.query.activity));
+                    var activity = utils.adjustIds(utils.getActivity(this.system, zone, req.params.activity));
 
                     if (activity) {
                         res.send(activity);
@@ -640,15 +639,15 @@ class Infinium {
 
             });
 
-            server.get('/api/schedule', (req, res) => {
+            server.get('/api/schedule/:zone', (req, res) => {
                 var zone;
-                if (!(zone = utils.validateZone(req.query.zone))) {
+                if (!(zone = utils.validateZone(req.params.zone))) {
                     res.send('Invalid Zone');
                 } else {
-                    var zone = utils.getZone(this.system, zone);
+                    var schedule = utils.getDay(utils.getZone(infinium.system, zone)).program;
 
-                    if (zone) {
-                        res.send(utils.adjustIds(zone, true));
+                    if (schedule) {
+                        res.send(utils.adjustIds(schedule, true));
                     } else {
                         res.send('');
                     }
@@ -656,9 +655,27 @@ class Infinium {
 
             });
 
-            server.get('/api/zone', (req, res) => {
+            server.get('/api/schedule/:zone/:day', (req, res) => {
                 var zone;
-                if (!(zone = utils.validateZone(req.query.zone))) {
+                if (!(zone = utils.validateZone(req.params.zone))) {
+                    res.send('Invalid Zone');
+                } else if (!utils.validateDay(req.params.day)) {
+                    res.send('Invalid Day');
+                } else {
+                    var schedule = utils.getDay(utils.getZone(infinium.system, zone).program, req.params.day);
+
+                    if (schedule) {
+                        res.send(utils.adjustIds(schedule, true));
+                    } else {
+                        res.send('');
+                    }
+                }
+
+            });
+
+            server.get('/api/zone/:zone', (req, res) => {
+                var zone;
+                if (!(zone = utils.validateZone(req.params.zone))) {
                     res.send('Invalid Zone');
                 } else {
                     var zone = utils.adjustIds(utils.getZone(this.system, zone));
@@ -672,10 +689,11 @@ class Infinium {
 
             });
 
-            server.post('/api/activity', (req, res) => {
-                if (req.body.zone && req.body.activity &&
+
+            server.post('/api/activity/:zone/:activity', (req, res) => {
+                if (req.params.zone && req.params.activity &&
                     (req.body.clsp || req.body.htsp || req.body.fan)) {
-                    this.setActivity(req.body.zone, req.body.activity,
+                    this.setActivity(req.params.zone, req.params.activity,
                         req.body.clsp || null,
                         req.body.htsp || null,
                         req.body.fan || null,
@@ -685,7 +703,7 @@ class Infinium {
                                 warn(err);
                             } else {
                                 res.send('sucess');
-                                debug(`Activity set (${req.body.zone},${req.body.activity}:${
+                                debug(`Activity set (${req.params.zone},${req.params.activity}:${
                                     req.body.clsp ? req.body.clsp : '*'
                                     },${
                                     req.body.htsp ? req.body.htsp : '*'
@@ -699,12 +717,12 @@ class Infinium {
                 }
             });
 
-            server.post('/api/hold', (req, res) => {
-                if (req.body.zone) {
+            server.post('/api/hold/:zone', (req, res) => {
+                if (req.params.zone) {
                     const activity = req.body.activity || 'home';
                     const holdUntil = req.body.holdUntil || null;
 
-                    this.setHold(req.body.zone, req.body.hold || true,
+                    this.setHold(req.params.zone, req.body.hold || true,
                         activity, holdUntil,
                         (err, system) => {
                             if (err) {
@@ -712,7 +730,7 @@ class Infinium {
                                 warn(err);
                             } else {
                                 res.send('sucess');
-                                debug(`Hold set (${req.body.zone},${activity},${holdUntil ? holdUntil : '*'}) from: ${req.connection.remoteAddress}`, true, true);
+                                debug(`Hold set (${req.params.zone},${activity},${holdUntil ? holdUntil : '*'}) from: ${req.connection.remoteAddress}`, true, true);
                             }
                         });
                 } else {
@@ -720,16 +738,16 @@ class Infinium {
                 }
             });
 
-            server.post('/api/schedule', (req, res) => {
-                if (req.body.zone && req.body.schedule) {
-                    this.setSchedule(req.body.zone, JSON.parse(req.body.schedule),
+            server.post('/api/schedule/:zone', (req, res) => {
+                if (req.params.zone && req.body.schedule) {
+                    this.setSchedule(req.params.zone, JSON.parse(req.body.schedule),
                         (err, system) => {
                             if (err) {
                                 res.send(err);
                                 warn(err);
                             } else {
                                 res.send('sucess');
-                                debug(`Schedule for Zone ${req.body.zone} updated from: ${req.connection.remoteAddress}`, true, true);
+                                debug(`Schedule for Zone ${req.params.zone} updated from: ${req.connection.remoteAddress}`, true, true);
                             }
                         });
                 } else {

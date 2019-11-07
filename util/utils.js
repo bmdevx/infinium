@@ -27,7 +27,7 @@ class utils {
 
     static validateDay(day) {
         return (typeof day === 'string') &&
-            ['Monday', 'Tuesday', 'Wednessday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].includes(day);
+            ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].includes(day.toLowerCase());
     }
 
     static validatePeriod(period) {
@@ -56,7 +56,7 @@ class utils {
 
     static getDay(program, dayId) {
         return program.day.find(d => {
-            return d.$ && d.$.id === dayId;
+            return d.$ && d.$.id.toLowerCase() === dayId.toLowerCase();
         });
     }
 
