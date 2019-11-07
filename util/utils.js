@@ -25,6 +25,16 @@ class utils {
         return false;
     };
 
+    static validateDay(day) {
+        return (typeof day === 'string') &&
+            ['Monday', 'Tuesday', 'Wednessday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].includes(day);
+    }
+
+    static validatePeriod(period) {
+        return ((Number.isInteger(period) || (typeof (period = parseInt(period)) === 'number')) &&
+            !isNaN(period) && period > 0 && period < 6) ? period : 0;
+    }
+
 
     static getZone(system, zone) {
         return (system.system ? system.system : system).config.zones.zone.find(z => {
@@ -39,8 +49,20 @@ class utils {
     }
 
     static getSchedule(system, zone, day) {
-        return this.getZone(system, zone).program.find(d => {
+        return this.getZone(system, zone).program.day.find(d => {
             return d.$ && d.$.id === day
+        });
+    }
+
+    static getDay(program, dayId) {
+        return program.day.find(d => {
+            return d.$ && d.$.id === dayId;
+        });
+    }
+
+    static getPeriod(day, periodId) {
+        return day.period.find(p => {
+            return p.$ && p.$.id === periodId;
         });
     }
 
