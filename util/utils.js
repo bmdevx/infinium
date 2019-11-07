@@ -141,10 +141,14 @@ class utils {
 
     static copyRequest(req) {
         return {
-            url: `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`,
+            url: this.buildUrlFromRequest(req),
             headers: req.headers,
             method: req.method
         }
+    }
+
+    static buildUrlFromRequest(req) {
+        return `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`;
     }
 }
 

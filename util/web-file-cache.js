@@ -111,7 +111,7 @@ class WebFileCache {
         if (!req) {
             throw 'Error: No Request';
         } else if (typeof req !== 'string' && !req.url.includes(':')) {
-            req.url = `${req.protocol || 'http'}://${req.host || req.hostname}${req.baseUrl || req.path}`;
+            req.url = `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`;
         }
 
         var key = this.requestToKey(config);

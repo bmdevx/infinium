@@ -351,10 +351,24 @@ class Infinium {
             res.send(xml);
         });
 
+        server.get('/manifest', (req, res) => {
+            debug('Retreiving Manifest');
+            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
+                if (!err) {
+                    res.send(data);
+                    debug('Sending Manifest');
+                } else {
+                    res.send('');
+                    error('manifest- ' + err);
+                    debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
+                }
+            });
+        });
+
         server.get('/releaseNotes/:id', (req, res) => {
             debug('Sending releaseNotes');
 
-            var fileName = 'releaseNotes';
+            var fileName = 'releaseNotes.txt';
 
             if (req.path) {
                 var parts = req.path.split('/');
@@ -368,6 +382,39 @@ class Infinium {
             });
 
             res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
+        });
+
+        server.get('/updates/:key', (req, res) => {
+            var fileName = 'system-update.hex';
+
+            if (req.path) {
+                var parts = req.path.split('/');
+                fileName = parts[parts.length - 1];
+            }
+
+            cache.get({ request: req, fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
+                if (err) {
+                    error(err);
+                }
+
+                var notice = {
+                    notice: 'System is trying to update itself. Check manifest for details',
+                    url: utils.buildUrlFromRequest(req),
+                    fileName: fileName
+                }
+
+                infinium.eventEmitter.emit('system_update', notice);
+                infinium.eventEmitter.emit('update', 'system_update', notice);
+
+                if (infinium.wsBroadcast) {
+                    infinium.wsBroadcast(WS_UPDATE, {
+                        id: 'system_update',
+                        data: notice
+                    });
+                }
+
+                res.send('');
+            });
         });
 
         //Thermostat checking for changes
@@ -470,7 +517,7 @@ class Infinium {
                 res.send(buildResponse());
                 infinium.changes = false;
 
-                debug('Sending Status Response - Changes: ' + infinium.changes);
+                debug(`Sending Status Response - Changes: ${infinium.changes}`);
             }
         });
 
@@ -528,20 +575,6 @@ class Infinium {
                     res.send('');
                     error(`Other Data (${key}) - ${err}`);
                     debug(`Request: ${utils.stringifyCirc(req)}\n`, false, true);
-                }
-            });
-        });
-
-        server.get('/manifest', (req, res) => {
-            debug('Retreiving Manifest');
-            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
-                if (!err) {
-                    res.send(data);
-                    debug('Sending Manifest');
-                } else {
-                    res.send('');
-                    error('manifest- ' + err);
-                    debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
                 }
             });
         });
