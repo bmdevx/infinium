@@ -569,13 +569,13 @@ class Infinium {
                 }
             }
 
-            //remove copy request
-            cache.get(req, (err, data, fromWeb) => {
+            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
                 } else {
                     res.send('');
                     error(`Other Data (${key}) - ${err}`);
+                    debug(`Copy Request: ${utils.copyRequest(req)}\n`, false, true);
                     debug(`Request: ${utils.stringifyCirc(req)}\n`, false, true);
                 }
             });
@@ -795,7 +795,7 @@ class Infinium {
         server.all('/*', (req, res) => {
             res.statusMessage = "Invalid Request";
             res.status(400).end();
-            debug(`Unknown Request: ${req.host}${req.originalUrl}`);
+            debug(`Unknown Request: ${utils.buildUrlFromRequest(req)}`);
         });
 
 
