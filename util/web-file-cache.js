@@ -87,7 +87,8 @@ class WebFileCache {
             }
 
             if (obj.url) {
-                config.url = obj.url;
+                req = obj;
+                config.req = req;
             }
 
             if (obj.refresh) {

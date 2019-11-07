@@ -5,8 +5,6 @@ const events = require('events');
 const xml2js = require('xml2js');
 const fs = require('fs');
 const utils = require('./util/utils.js')
-const clone = require('./util/clone.js');
-const copyRequest = require('./util/copy-request.js');
 const WebFileCache = require('./util/web-file-cache.js');
 const CarrierWeatherProvider = require('./util/carrier-weather-provider.js');
 const WundergroundWeatherProvider = require('./util/wunderground-weather-provider.js');
@@ -48,7 +46,7 @@ const FanModes = {
     Low: 'low',
     Med: 'med',
     High: 'high',
-    All: [ 'off', 'low', 'med', 'high' ]
+    All: ['off', 'low', 'med', 'high']
 }
 
 
@@ -117,23 +115,6 @@ class Infinium {
             }
         }
 
-        const stringifyCirc = function (obj) {
-            const getCircularReplacer = () => {
-                const seen = new WeakSet();
-                return (key, value) => {
-                    if (typeof value === "object" && value !== null) {
-                        if (seen.has(value)) {
-                            return;
-                        }
-                        seen.add(value);
-                    }
-                    return value;
-                };
-            };
-
-            return JSON.stringify(obj, getCircularReplacer());
-        };
-
         //Updaters
         infinium.updateConfig = function (newConfig, fromCarrier = false, loading = false) {
             var process = function (xmlNewConfig, jsonNewConfig) {
@@ -141,7 +122,7 @@ class Infinium {
                     if (!err) {
                         infinium.config = jsonNewConfig;
 
-                        const config = clone(infinium.config, true);
+                        const config = utils.clone(infinium.config, true);
                         infinium.eventEmitter.emit('config', config.config);
                         infinium.eventEmitter.emit('update', 'config', config);
 
@@ -207,7 +188,7 @@ class Infinium {
                     if (!err) {
                         infinium.status = jsonNewStatus;
 
-                        const status = clone(infinium.status, true);
+                        const status = utils.clone(infinium.status, true);
                         infinium.eventEmitter.emit('status', status.status);
                         infinium.eventEmitter.emit('update', 'status', status);
 
@@ -247,7 +228,7 @@ class Infinium {
                     if (!err) {
                         infinium.system = jsonNewSystem;
 
-                        infinium.updateConfig(clone(infinium.system.system));
+                        infinium.updateConfig(utils.clone(infinium.system.system));
                     } else {
                         error(err);
                     }
@@ -290,8 +271,17 @@ class Infinium {
                     infinium.running = true;
 
                     debug(`Listening on port ${port}`, true, true);
+
                     if (apiEnabled) {
                         debug(`Remote API is Enabled`, true, true);
+                    }
+
+                    if (keepOtherHistory) {
+                        debug('Keep Other History Enabled', true, true);
+                    }
+
+                    if (debugMode) {
+                        debug('Debug Mode Enabled');
                     }
                 });
             }
@@ -364,7 +354,14 @@ class Infinium {
         server.get('/releaseNotes/:id', (req, res) => {
             debug('Sending releaseNotes');
 
-            cache.get({ request: copyRequest(req), fileName: DATA_DIR + 'relaseNotes.txt' }, (err, data, fromWeb) => {
+            var fileName = 'releaseNotes';
+
+            if (req.path) {
+                var parts = req.path.split('/');
+                fileName = parts[parts.length - 1];
+            }
+
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
                 if (err) {
                     error(err);
                 }
@@ -385,7 +382,7 @@ class Infinium {
                 });
                 res.send(newXmlConfig);
             } else {
-                cache.get({ request: copyRequest(req), fileName: CONFIG_XML }, (err, data, fromWeb) => {
+                cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML }, (err, data, fromWeb) => {
                     if (!err) {
                         infinium.updateConfig(data, true);
                         res.send(infinium.xmlConfig);
@@ -419,7 +416,7 @@ class Infinium {
                 infinium.updateSystem(req.body.data);
             }
 
-            cache.get(copyRequest(req), (err, data, fromWeb) => {
+            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
                 //ignore
             });
 
@@ -446,7 +443,7 @@ class Infinium {
             }
 
             if (infinium.sendStatusToCarrier && new Date().getTime() > infinium.sendStatusToCarrier) {
-                cache.get({ request: copyRequest(req), refresh: true }, (err, data, fromWeb) => {
+                cache.get({ request: utils.copyRequest(req), refresh: true }, (err, data, fromWeb) => {
                     if (!err) {
                         parseXml2Json(data, (err, obj) => {
                             if (!err) {
@@ -481,13 +478,13 @@ class Infinium {
         server.get('/systems/:system_id/:key', (req, res) => {
             var key = req.params.key;
 
-            cache.get({ request: copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
+            cache.get({ request: utils.copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
                 } else {
                     res.send('');
                     error(err);
-                    debug(`Request: ${stringifyCirc(req)}`, false, true);
+                    debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
                 }
             });
         });
@@ -512,43 +509,39 @@ class Infinium {
                 }
 
                 try {
-                    fs.writeFileSync(DATA_DIR + key + '.xml', req.body.data);
-                } catch (e) {
-                    error(`Unable to save ${key}.xml` + e);
-                }
-
-                try {
                     fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
 
                     if (keepOtherHistory) {
-                        var dt = new Date().toISOString().replace('T', '_').replace('Z', '');
+                        var dt = new Date().toISOString().replace(/:/g, '-').replace('T', '_').replace('Z', '');
                         fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
                     }
                 } catch (e) {
-                    error(`Unable to save ${key}.xml` + e);
+                    error(`Unable to save ${key}.xml ` + e);
                 }
             }
 
-            cache.get(copyRequest(req), (err, data, fromWeb) => {
+            //remove copy request
+            cache.get(req, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
                 } else {
                     res.send('');
                     error(`Other Data (${key}) - ${err}`);
-                    debug(`Request: ${stringifyCirc(req)}`, false, true);
+                    debug(`Request: ${utils.stringifyCirc(req)}\n`, false, true);
                 }
             });
         });
 
-        server.get('/systems/manifest', (req, res) => {
-            debug('Sending Manifest');
-            cache.get(copyRequest(req), (err, data, fromWeb) => {
+        server.get('/manifest', (req, res) => {
+            debug('Retreiving Manifest');
+            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
+                    debug('Sending Manifest');
                 } else {
                     res.send('');
                     error('manifest- ' + err);
-                    debug(`Request: ${stringifyCirc(req)}`, false, true);
+                    debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
                 }
             });
         });
@@ -557,7 +550,7 @@ class Infinium {
             var now = new Date().getTime();
 
             if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > weatherRefreshRate)) {
-                infinium.weatherProvider.init(copyRequest(req));
+                infinium.weatherProvider.init(utils.copyRequest(req));
 
                 infinium.weatherProvider.getWeather((err, xmlWeather) => {
                     if (!err) {
@@ -583,10 +576,11 @@ class Infinium {
         });
 
         server.get('/:key', (req, res) => {
-            var msg = 'Unknown Request: ' + req.params['key'];
-            debug(msg);
+            var msg = 'Unknown Request (GET): /' + req.params['key'];
+            debug(msg, true, true);
             res.send(msg);
         });
+
 
         if (apiEnabled) {
             server.get('/api/status', (req, res) => {
@@ -594,6 +588,91 @@ class Infinium {
             });
 
             //add api functions
+            server.get('/api/activity', (req, res) => {
+                var zone;
+                if (!(zone = utils.validateZone(req.query.zone))) {
+                    res.send('Invalid Zone');
+                } else if (!Activities.All.includes(req.query.activity)) {
+                    res.send('Invalid Activity');
+                } else {
+                    var activity = utils.adjustIds(utils.clone(utils.getActivity(this.system, zone, req.query.activity)));
+
+                    if (activity) {
+                        res.send(activity);
+                    } else {
+                        res.send('');
+                    }
+                }
+
+            });
+
+            server.get('/api/schedule', (req, res) => {
+                var zone;
+                if (!(zone = utils.validateZone(req.query.zone))) {
+                    res.send('Invalid Zone');
+                } else {
+                    var zone = utils.getZone(this.system, zone);
+
+                    if (zone) {
+                        res.send(utils.adjustIds(utils.clone(zone, true)));
+                    } else {
+                        res.send('');
+                    }
+                }
+
+            });
+
+            server.get('/api/zone', (req, res) => {
+                var zone;
+                if (!(zone = utils.validateZone(req.query.zone))) {
+                    res.send('Invalid Zone');
+                } else {
+                    var zone = utils.adjustIds(utils.getZone(this.system, zone));
+
+                    if (zone) {
+                        res.send(utils.clone(zone, true));
+                    } else {
+                        res.send('');
+                    }
+                }
+
+            });
+
+            server.post('/api/activity', (req, res) => {
+                if (req.params.zone && req.params.activity &&
+                    (req.params.clsp || req.params.htsp || req.params.fan)) {
+                    this.setActivity(req.params.zone, req.params.activity,
+                        req.params.clsp || null,
+                        req.params.htsp || null,
+                        req.params.fan || null,
+                        (err, system) => {
+                            if (err) {
+                                res.send(err);
+                                warn(err);
+                            } else {
+                                res.send(sucess);
+                                debug(`Activity (${req.params.activity}) updated from: ${req.connection.remoteAddress}`, true, true);
+                            }
+                        });
+                }
+            });
+
+            server.post('/api/hold', (req, res) => {
+                if (req.params.zone && req.params.hold) {
+                    this.setHold(req.params.zone, req.params.hold,
+                        req.params.activity || null,
+                        req.params.holdUntil || null,
+                        (err, system) => {
+                            if (err) {
+                                res.send(err);
+                                warn(err);
+                            } else {
+                                res.send(sucess);
+                                debug(`Hold (${req.params.activity}) updated from: ${req.connection.remoteAddress}`, true, true);
+                            }
+                        });
+                }
+            });
         }
 
         if (wsEnabled) {
@@ -640,6 +719,14 @@ class Infinium {
             });
         }
 
+        if (keepOtherHistory && !fs.existsSync(DATA_HISTORY_DIR)) {
+            try {
+                fs.mkdirSync(DATA_HISTORY_DIR, { recursive: true });
+            } catch (e) {
+                error(`Unable to create ${DATA_HISTORY_DIR}: ` + e);
+            }
+        }
+
         server.all('/*', (req, res) => {
             debug(`Unknown Request: ${req.host}${req.originalUrl}`);
         });
@@ -663,11 +750,11 @@ class Infinium {
 
 
     getConfig() {
-        return clone(this.config.config, true);
+        return utils.clone(this.config.config, true);
     }
 
     getStatus() {
-        return clone(this.status.status, true);
+        return utils.clone(this.status.status, true);
     }
 
     onConfigUpdate(callback) {
@@ -713,77 +800,100 @@ class Infinium {
 
 
     setHold(zone, hold = true, activity = 'home', holdUntil = null, callback) {
-        if (zone = utils.validateZone(zone)) {
-            if (typeof hold === 'boolean' || hold === 'on' || hold === 'off') {
-                if (Activities.All.includes(activity)) {
-                    if (utils.validateTime(holdUntil)) {
-                        var system = clone(this.system);
-                        var zone = utils.getZone(system, zone);
+        if (this.system) {
+            if (zone = utils.validateZone(zone)) {
+                if (typeof hold === 'boolean' || hold === 'on' || hold === 'off') {
+                    if (Activities.All.includes(activity)) {
+                        if (utils.validateTime(holdUntil)) {
+                            var system = utils.clone(this.system);
+                            var zone = utils.getZone(system, zone);
 
-                        zone.hold = (typeof hold === 'boolean') ? (hold === true ? 'on' : 'off') : hold;
-                        zone.holdActivity = activity;
-                        zone.otmr = (holdUntil) ? holdUntil : '';
+                            zone.hold = ((typeof hold === 'boolean') ? (hold === true ? 'on' : 'off') : hold);
+                            zone.holdActivity = activity;
+                            zone.otmr = (holdUntil) ? holdUntil : '';
 
-                        this.applySystemChanges(system);
-                    } else {
-                        callback('invalid hold until value: ' + holdUntil);
-                    }
-                } else {
-                    callback('invalid avtivity value: ' + activity);
-                }
-            } else {
-                callback('invalid hold value: ' + zone);
-            }
-        } else {
-            callback('invalid zone: ' + zone);
-        }
-    }
+                            this.applySystemChanges(system);
 
-    setActivity(zone, activity, clsp = null, htsp = null, fanMode = null) {
-        const system = clone(this.system);
-
-        if (zone = utils.validateZone(zone)) {
-            if (Activities.All.includes(activity)) {
-                if (clsp = utils.validateTemp(clsp, system.config.vacmint, system.config.vacmaxt)) {
-                    if (htsp = utils.validateTemp(htsp, system.config.vacmint, system.config.vacmaxt)) {
-                        if (fanMode === null || FanModes.All.includes(fanMode)) {
-                            activity = utils.getActivity(system, zone, activity);
-
-                            if (activity) {
-                                if (clsp !== null) {
-                                    activity.clsp = clsp;
-                                }
-
-                                if (htsp !== null) {
-                                    activity.htsp = htsp;
-                                }
-                                
-                                if (fanMode !== null) {
-                                    activity.fan = fanMode;
-                                }
-
-                                this.applySystemChanges(system);
-                            } else {
-                                callback('can not find activity in config');
-                            }
+                            if (callback)
+                                callback(null, utils.clone(system));
                         } else {
-                            callback('invalid fan mode: ' + fanMode);
+                            if (callback)
+                                callback('invalid hold until value: ' + holdUntil);
                         }
                     } else {
-                        callback('invalid heating setpoint: ' + htsp);
+                        if (callback)
+                            callback('invalid avtivity value: ' + activity);
                     }
                 } else {
-                    callback('invalid cooling setpoint: ' + clsp);
+                    if (callback)
+                        callback('invalid hold value: ' + zone);
                 }
             } else {
-                callback('invalid avtivity value: ' + activity);
+                if (callback)
+                    callback('invalid zone: ' + zone);
             }
-            
-        } else {
-            callback('invalid zone: ' + zone);
+        } else if (callback) {
+            callback('System not ready.');
         }
     }
 
+    setActivity(zone, activity, clsp = null, htsp = null, fan = null, callback) {
+        if (this.system) {
+            const system = utils.clone(this.system);
+
+            if (zone = utils.validateZone(zone)) {
+                if (Activities.All.includes(activity)) {
+                    if (clsp = utils.validateTemp(clsp, system.system.config.vacmint, system.system.config.vacmaxt)) {
+                        if (htsp = utils.validateTemp(htsp, system.system.config.vacmint, system.system.config.vacmaxt)) {
+                            if (fan === null || FanModes.All.includes(fan)) {
+                                activity = utils.getActivity(system, zone, activity);
+
+                                if (activity) {
+                                    if (clsp !== null) {
+                                        activity.clsp = clsp.toFixed(1);
+                                    }
+
+                                    if (htsp !== null) {
+                                        activity.htsp = htsp.toFixed(1);
+                                    }
+
+                                    if (fan !== null) {
+                                        activity.fan = fan;
+                                    }
+
+                                    this.applySystemChanges(system);
+
+                                    if (callback)
+                                        callback(null, utils.clone(system));
+                                } else {
+                                    if (callback)
+                                        callback('can not find activity in config');
+                                }
+                            } else {
+                                if (callback)
+                                    callback('invalid fan mode: ' + fan);
+                            }
+                        } else {
+                            if (callback)
+                                callback('invalid heating setpoint: ' + htsp);
+                        }
+                    } else {
+                        if (callback)
+                            callback('invalid cooling setpoint: ' + clsp);
+                    }
+                } else {
+                    if (callback)
+                        callback('invalid avtivity value: ' + activity);
+                }
+
+            } else {
+                if (callback)
+                    callback('invalid zone: ' + zone);
+            }
+        } else if (callback) {
+            callback('System not ready.');
+        }
+    }
 }
 
 module.exports = Infinium;

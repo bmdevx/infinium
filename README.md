@@ -10,10 +10,10 @@
   * Wunderground Support (Beta)
  
 
-#### Works Using
-  * Server Functions (work in progress)
-  * REST API (work in progress)
-  * WebSockets (work in progress)
+#### Control / View Using
+  * REST API
+  * WebSockets
+  * Class Functions
 
 ### Config Example
 ```
@@ -87,6 +87,7 @@ All data is in JSON Format
 #### Future Features
  * Web mobile friendly interface
  * Node-RED and Home-Assistant integration
+ * Security Policy (Keys for controlling the thermostat or viewing non-status data from REST/WS)
 
 
 #### Credits

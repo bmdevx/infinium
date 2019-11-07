@@ -25,23 +25,126 @@ class utils {
         return false;
     };
 
-    
+
     static getZone(system, zone) {
-        return system.config.zones.find(z => {
-            return z.$ && z.$.id === zone
+        return (system.system ? system.system : system).config.zones.zone.find(z => {
+            return z.$ && this.validateZone(z.$.id) === zone
         });
     }
-    
+
     static getActivity(system, zone, activityName) {
-        return getZone(system, zone).activities.find(a => {
+        return this.getZone(system, zone).activities.activity.find(a => {
             return a.$ && a.$.id === activityName
         });
     }
-    
+
     static getSchedule(system, zone, day) {
-        return getZone(system, zone).program.find(d => {
+        return this.getZone(system, zone).program.find(d => {
             return d.$ && d.$.id === day
         });
+    }
+
+    static stringifyCirc(obj) {
+        const getCircularReplacer = () => {
+            const seen = new WeakSet();
+            return (key, value) => {
+                if (typeof value === "object" && value !== null) {
+                    if (seen.has(value)) {
+                        return;
+                    }
+                    seen.add(value);
+                }
+                return value;
+            };
+        };
+
+        return JSON.stringify(obj, getCircularReplacer());
+    };
+
+    static clone(obj, strip$ = false) {
+        var copy;
+
+        // Handle the 3 simple types, and null or undefined
+        if (null == obj || "object" != typeof obj) return obj;
+
+        // Handle Date
+        if (obj instanceof Date) {
+            copy = new Date();
+            copy.setTime(obj.getTime());
+            return copy;
+        }
+
+        // Handle Array
+        if (obj instanceof Array) {
+            copy = [];
+            for (var i = 0, len = obj.length; i < len; i++) {
+                copy[i] = this.clone(obj[i]);
+            }
+            return copy;
+        }
+
+        // Handle Object
+        if (obj instanceof Object) {
+            copy = {};
+            for (var attr in obj) {
+                if (obj.hasOwnProperty(attr) && (!strip$ || attr !== '$'))
+                    copy[attr] = this.clone(obj[attr]);
+            }
+            return copy;
+        }
+
+        throw new Error("Unable to copy obj! Its type isn't supported.");
+    }
+
+    static adjustIds(obj) {
+        var copy;
+
+        // Handle the 3 simple types, and null or undefined
+        if (null == obj || "object" != typeof obj) return obj;
+
+        // Handle Date
+        if (obj instanceof Date) {
+            copy = new Date();
+            copy.setTime(obj.getTime());
+            return copy;
+        }
+
+        // Handle Array
+        if (obj instanceof Array) {
+            copy = [];
+            for (var i = 0, len = obj.length; i < len; i++) {
+                copy[i] = this.adjustIds(obj[i]);
+            }
+            return copy;
+        }
+
+        // Handle Object
+        if (obj instanceof Object) {
+            copy = {};
+            for (var attr in obj) {
+
+                if (attr === '$') {
+                    for (var $attr in obj[attr]) {
+                        copy[$attr] = obj[attr][$attr];
+                    }
+
+                    delete obj.attr;
+                } else if (obj.hasOwnProperty(attr)) {
+                    copy[attr] = this.adjustIds(obj[attr]);
+                }
+            }
+            return copy;
+        }
+
+        throw new Error("Unable to copy obj! Its type isn't supported.");
+    }
+
+    static copyRequest(req) {
+        return {
+            url: `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`,
+            headers: req.headers,
+            method: req.method
+        }
     }
 }
 
