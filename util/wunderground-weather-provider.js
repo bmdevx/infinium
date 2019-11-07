@@ -87,11 +87,7 @@ class WundergroundWeatherProvier extends WeatherProvider {
         this.wunderground = new WeatherUndergroundNode(config.apiKey);
     }
 
-    init(req) {
-
-    }
-
-    getWeather(callback) {
+    getWeather(req, callback) {
         const xmlBuilder = this.xmlBuilder;
         var processData = function (err, data) {
             var getStatus = function (index) {

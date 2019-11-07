@@ -586,9 +586,7 @@ class Infinium {
             var now = new Date().getTime();
 
             if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > weatherRefreshRate)) {
-                infinium.weatherProvider.init(utils.copyRequest(req));
-
-                infinium.weatherProvider.getWeather((err, xmlWeather) => {
+                infinium.weatherProvider.getWeather(utils.copyRequest(req), (err, xmlWeather) => {
                     if (!err) {
                         res.send(xmlWeather);
                         infinium.xmlWeather = xmlWeather;

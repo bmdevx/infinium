@@ -1,6 +1,6 @@
 class WeatherProvider {
     constructor() {
-        if (!this.getWeather || !this.init || !this.getName) {
+        if (!this.getWeather || !this.getName) {
             throw 'Invalid Weather Provider';
         }
     }
