@@ -19,7 +19,7 @@ const DEFAULT_FORWARD_INTERVAL = 15 * 60 * 1000; //in millis
 const DEAFULT_WEATHER_REFRESH_RATE = 15 * 60 * 1000; //in millis
 
 const DATA_DIR = process.env.INFINIUM_DATA || '/data/';
-const DATA_HISTORY_DIR = process.env.INFINIUM_DATA || '/data/history/';
+const DATA_HISTORY_DIR = process.env.INFINIUM_DATA_HISTORY || '/data/history/';
 const CACHE_DIR = DATA_DIR + 'cache/';
 
 const LOG_FILE = DATA_DIR + 'infinium.log';
@@ -277,7 +277,7 @@ class Infinium {
                     }
 
                     if (keepOtherHistory) {
-                        debug('Keep Other History Enabled', true, true);
+                        debug(`Keep Other History Enabled '${DATA_HISTORY_DIR}'`, true, true);
                     }
 
                     if (debugMode) {
@@ -786,7 +786,7 @@ class Infinium {
             try {
                 fs.mkdirSync(DATA_HISTORY_DIR, { recursive: true });
             } catch (e) {
-                error(`Unable to create ${DATA_HISTORY_DIR}: ` + e);
+                error(`Unable to create ${DATA_HISTORY_DIR}: ${e}`);
             }
         }
 
