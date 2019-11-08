@@ -18,5 +18,11 @@
     "express-ws": "^4.0.0",
     "request": "^2.88.0",
     "xml2js": "^0.4.22"
-  }
+  },
+  "keywords": [
+    "carrier",
+    "bryant",
+    "thermostat",
+    "infinity"
+  ]
 }
