@@ -85,7 +85,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOString()} : debug : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal()} : debug : ${msg}\n`, 'utf8');
                 } catch (e) {
                     error(e);
                 }
@@ -97,7 +97,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOString()} : error : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal()} : error : ${msg}\n`, 'utf8');
                 } catch (e) {
                     console.error(e);
                 }
@@ -109,7 +109,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOString()} : warn : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal()} : warn : ${msg}\n`, 'utf8');
                 } catch (e) {
                     console.error(e);
                 }
@@ -345,7 +345,7 @@ class Infinium {
                     $: {
                         "version": "1.9"
                     },
-                    utc: new Date().toISOString()
+                    utc: new Date().toISOStringLocal()
                 }
             });
 
@@ -562,7 +562,7 @@ class Infinium {
                     fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
 
                     if (keepOtherHistory) {
-                        var dt = new Date().toISOString().replace(/:/g, '-').replace('T', '_').replace('Z', '');
+                        var dt = new Date().toISOStringLocal().replace(/:/g, '-').replace('T', '_').replace('Z', '');
                         fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
                     }
                 } catch (e) {
