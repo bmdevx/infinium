@@ -126,8 +126,8 @@ class Infinium {
                         infinium.eventEmitter.emit('status', status.status);
                         infinium.eventEmitter.emit('update', 'status', status);
 
-                        if (infinium.wsBroadcast) {
-                            infinium.wsBroadcast(WS_STATUS, status.status);
+                        if (infinium.ws.broadcast) {
+                            infinium.ws.broadcast(WS_STATUS, status.status);
                         }
                     }
                 };
@@ -202,8 +202,8 @@ class Infinium {
                         infinium.eventEmitter.emit('config', config.config);
                         infinium.eventEmitter.emit('update', 'config', config);
 
-                        if (infinium.wsBroadcast) {
-                            infinium.wsBroadcast(WS_CONFIG, config.config);
+                        if (infinium.ws.broadcast) {
+                            infinium.ws.broadcast(WS_CONFIG, config.config);
                         }
                     } else {
                         error(err);
@@ -407,8 +407,8 @@ class Infinium {
                 infinium.eventEmitter.emit('system_update', notice);
                 infinium.eventEmitter.emit('update', 'system_update', notice);
 
-                if (infinium.wsBroadcast) {
-                    infinium.wsBroadcast(WS_UPDATE, {
+                if (infinium.ws.broadcast) {
+                    infinium.ws.broadcast(WS_UPDATE, {
                         id: 'system_update',
                         data: notice
                     });
@@ -549,9 +549,9 @@ class Infinium {
                 infinium.eventEmitter.emit(key, data);
                 infinium.eventEmitter.emit('update', key, data);
 
-                if (infinium.wsBroadcast) {
-                    infinium.wsBroadcast(`/ws/${key}`, data);
-                    infinium.wsBroadcast(WS_UPDATE, {
+                if (infinium.ws.broadcast) {
+                    infinium.ws.broadcast(`/ws/${key}`, data);
+                    infinium.ws.broadcast(WS_UPDATE, {
                         id: key,
                         data: data
                     });
@@ -757,17 +757,25 @@ class Infinium {
         }
 
         if (wsEnabled) {
-            infinium.wsServer = expressWS(server);
+            infinium.ws = {};
+            infinium.ws.server = expressWS(server);
 
-            infinium.wsBroadcast = function (path, data) {
+            infinium.ws.broadcast = function (path, data) {
                 try {
-                    const clients = infinium.wsServer.getWss(path).clients;
+                    var clients = infinium.ws.server.getWss().clients
 
                     if (clients && clients.size > 0) {
+                        clients = Array.from(clients).filter(s => {
+                            return s.route === path;
+                        });
+
                         clients.forEach((client) => {
                             client.send(JSON.stringify(data));
                         });
-                        debug(`WS Sending '${path}' to ${clients.size} client${clients.size > 1 ? 's' : ''}`);
+
+                        if (clients.length > 0) {
+                            debug(`WS Sending '${path}' to ${clients.length} client${clients.length > 1 ? 's' : ''}`);
+                        }
                     }
                 } catch (e) {
                     error(`WS Broadcast (${path}) ` + e);
@@ -776,6 +784,8 @@ class Infinium {
 
 
             server.ws(WS_STATUS, (ws, req) => {
+                ws.route = WS_STATUS;
+
                 ws.on('close', () => {
                     debug(`Client disconnected from ${WS_STATUS}`);
                 });
@@ -784,6 +794,8 @@ class Infinium {
             });
 
             server.ws(WS_CONFIG, (ws, req) => {
+                ws.route = WS_CONFIG;
+
                 ws.on('close', () => {
                     debug(`Client disconnected from ${WS_CONFIG}`);
                 });
@@ -792,11 +804,25 @@ class Infinium {
             });
 
             server.ws(WS_UPDATE, (ws, req) => {
+                ws.route = WS_UPDATE;
+
                 ws.on('close', () => {
                     debug(`Client disconnected from ${WS_UPDATE}`);
                 });
 
                 debug(`Client connected to ${WS_UPDATE}`);
+            });
+
+            server.ws('/ws/:key', (ws, req) => {
+                const key = req.params.key;
+
+                ws.route = `/ws/${key}`;
+
+                ws.on('close', () => {
+                    debug(`Client disconnected from ${key}`);
+                });
+
+                debug(`Client connected to ${key}`);
             });
         }
 
@@ -828,6 +854,11 @@ class Infinium {
 
         if (!infinium.weatherProvider) {
             infinium.weatherProvider = new CarrierWeatherProvider();
+        }
+
+        this.resendStatus = function () {
+            infinium.ws.broadcast('/ws/something', utils.adjustIds(infinium.config));
+            infinium.ws.broadcast(WS_UPDATE, { id: 'status', data: utils.adjustIds(infinium.config) });
         }
     }
 
