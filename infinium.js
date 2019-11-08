@@ -545,18 +545,24 @@ class Infinium {
             debug(`Receiving ${key}.xml`);
 
             if (req.body.data !== 'error') {
-                var data = utils.adjustIds(parseXml2Json(req.body.data));
+                parseXml2Json(req.body.data, (err, obj) => {
+                    if (!err) {
+                        var data = utils.adjustIds(obj);
 
-                infinium.eventEmitter.emit(key, data);
-                infinium.eventEmitter.emit('update', key, data);
+                        infinium.eventEmitter.emit(key, data);
+                        infinium.eventEmitter.emit('update', key, data);
 
-                if (infinium.ws) {
-                    infinium.ws.broadcast(`/ws/${key}`, data);
-                    infinium.ws.broadcast(WS_UPDATE, {
-                        id: key,
-                        data: data
-                    });
-                }
+                        if (infinium.ws) {
+                            infinium.ws.broadcast(`/ws/${key}`, data);
+                            infinium.ws.broadcast(WS_UPDATE, {
+                                id: key,
+                                data: data
+                            });
+                        }
+                    } else {
+                        error(`Failed to parse: ${key}`);
+                    }
+                });
 
                 try {
                     fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
