@@ -575,7 +575,7 @@ class Infinium {
                 } else {
                     res.send('');
                     error(`Other Data (${key}) - ${err}`);
-                    debug(`Copy Request: ${utils.copyRequest(req)}\n`, false, true);
+                    debug(`Copied Request: ${utils.stringifyCirc(utils.copyRequest(req))}\n`, false, true);
                     debug(`Request: ${utils.stringifyCirc(req)}\n`, false, true);
                 }
             });

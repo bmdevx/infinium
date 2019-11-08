@@ -120,8 +120,8 @@ class WebFileCache {
         if (this.cache.has(key)) {
             fcc = this.cache.get(key);
 
-            if (fileName && !fcc.file.endsWith(fileName)) {
-                fcc.file = this.cacheDir + fileName;
+            if (config.fileName && !fcc.file.endsWith(fileName)) {
+                fcc.file = config.fileName;
             }
         } else {
             fcc = this.createFileCacheConfig(key, config);
