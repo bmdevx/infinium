@@ -698,7 +698,7 @@ class Infinium {
                         req.body.clsp || null,
                         req.body.htsp || null,
                         req.body.fan || null,
-                        (err, system) => {
+                        (err, activity) => {
                             if (err) {
                                 res.send(err);
                                 warn(err);
@@ -725,7 +725,7 @@ class Infinium {
 
                     this.setHold(req.params.zone, req.body.hold || true,
                         activity, holdUntil,
-                        (err, system) => {
+                        (err, zone) => {
                             if (err) {
                                 res.send(err);
                                 warn(err);
@@ -931,7 +931,7 @@ class Infinium {
                                 this.applySystemChanges(system);
 
                                 if (callback)
-                                    callback(null, utils.adjustIds(system));
+                                    callback(null, utils.adjustIds(szone));
                             } else if (callback) {
                                 callback('Can not find zone in config');
                             }
@@ -980,7 +980,7 @@ class Infinium {
                                     this.applySystemChanges(system);
 
                                     if (callback)
-                                        callback(null, utils.adjustIds(system));
+                                        callback(null, utils.adjustIds(activity));
                                 } else if (callback) {
                                     callback('Can not find activity in config');
                                 }
@@ -1118,7 +1118,7 @@ class Infinium {
                 });
 
                 this.applySystemChanges(system);
-                callback(null, utils.adjustIds(system));
+                callback(null, utils.adjustIds(program));
             } else if (callback) {
                 callback(`Invalid Zone: ${zone}`);
             }
