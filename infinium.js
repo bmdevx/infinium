@@ -824,6 +824,10 @@ class Infinium {
 
                 debug(`Client connected to /ws/${key}`);
             });
+        } else {
+            server.all('/ws/:key', (req, res) => {
+                res.send('Websockets are not enabled.');
+            });
         }
 
         if (keepOtherHistory && !fs.existsSync(DATA_HISTORY_DIR)) {
