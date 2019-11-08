@@ -27,6 +27,7 @@ const CONFIG_XML = DATA_DIR + 'config.xml';
 const STATUS_XML = DATA_DIR + 'status.xml';
 const SYSTEM_XML = DATA_DIR + 'system.xml';
 const WEATHER_XML = DATA_DIR + 'weather.xml';
+const MANIFEST_XML = DATA_DIR + 'manifest.xml';
 
 const WS_STATUS = '/ws/status';
 const WS_CONFIG = '/ws/config';
@@ -354,7 +355,7 @@ class Infinium {
 
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
-            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
+            cache.get({ request: utils.copyRequest(req), fileName: MANIFEST_XML }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
                     debug('Sending Manifest');
