@@ -54,13 +54,13 @@ class Infinium {
     constructor(config = {}) {
         const infinium = this;
 
-        const port = config.port || process.env.INFINIUM_PORT || DEFAULT_LISTEN_PORT;
-        const wsEnabled = config.enableWs || process.env.INFINIUM_WS_ENABLED || DEFAULT_WS_ENABLED;
-        const apiEnabled = config.enableApi || process.env.INFINIUM_API_ENABLED || DEFAULT_API_ENABLED;
-        const keepOtherHistory = config.keepOtherHistory || process.env.INFINIUM_KEEP_OTHER_HISTORY || DEFAULT_KEEP_OTHER_HISTORY;
-        const forwardInterval = config.forwardInterval || process.env.INFINIUM_FORWARD_INTERVAL || DEFAULT_FORWARD_INTERVAL;
-        const weatherRefreshRate = config.weatherRefreshRate || process.env.INFINIUM_WEATHER_REFRESH_RATE || DEAFULT_WEATHER_REFRESH_RATE;
-        const debugMode = config.debugMode || process.env.INFINIUM_DEBUG_MODE || DEBUG_MODE;
+        const port = utils.getConfigVar(config.port, process.env.INFINIUM_PORT, DEFAULT_LISTEN_PORT);
+        const wsEnabled = utils.getConfigVar(config.enableWs, process.env.INFINIUM_WS_ENABLED, DEFAULT_WS_ENABLED);
+        const apiEnabled = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
+        const keepOtherHistory = utils.getConfigVar(config.keepOtherHistory, process.env.INFINIUM_KEEP_OTHER_HISTORY, DEFAULT_KEEP_OTHER_HISTORY);
+        const forwardInterval = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
+        const weatherRefreshRate = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
+        const debugMode = utils.getConfigVar(config.debugMode, process.env.INFINIUM_DEBUG_MODE, DEBUG_MODE);
 
         const xmlBuilder = new xml2js.Builder({ headless: true });
         const xmlParser = new xml2js.Parser({ explicitArray: false });
@@ -126,7 +126,7 @@ class Infinium {
                         infinium.eventEmitter.emit('status', status.status);
                         infinium.eventEmitter.emit('update', 'status', status);
 
-                        if (infinium.ws.broadcast) {
+                        if (infinium.ws) {
                             infinium.ws.broadcast(WS_STATUS, status.status);
                         }
                     }
@@ -202,7 +202,7 @@ class Infinium {
                         infinium.eventEmitter.emit('config', config.config);
                         infinium.eventEmitter.emit('update', 'config', config);
 
-                        if (infinium.ws.broadcast) {
+                        if (infinium.ws) {
                             infinium.ws.broadcast(WS_CONFIG, config.config);
                         }
                     } else {
@@ -407,7 +407,7 @@ class Infinium {
                 infinium.eventEmitter.emit('system_update', notice);
                 infinium.eventEmitter.emit('update', 'system_update', notice);
 
-                if (infinium.ws.broadcast) {
+                if (infinium.ws) {
                     infinium.ws.broadcast(WS_UPDATE, {
                         id: 'system_update',
                         data: notice
@@ -549,7 +549,7 @@ class Infinium {
                 infinium.eventEmitter.emit(key, data);
                 infinium.eventEmitter.emit('update', key, data);
 
-                if (infinium.ws.broadcast) {
+                if (infinium.ws) {
                     infinium.ws.broadcast(`/ws/${key}`, data);
                     infinium.ws.broadcast(WS_UPDATE, {
                         id: key,
@@ -819,10 +819,10 @@ class Infinium {
                 ws.route = `/ws/${key}`;
 
                 ws.on('close', () => {
-                    debug(`Client disconnected from ${key}`);
+                    debug(`Client disconnected from /ws/${key}`);
                 });
 
-                debug(`Client connected to ${key}`);
+                debug(`Client connected to /ws/${key}`);
             });
         }
 
@@ -854,11 +854,6 @@ class Infinium {
 
         if (!infinium.weatherProvider) {
             infinium.weatherProvider = new CarrierWeatherProvider();
-        }
-
-        this.resendStatus = function () {
-            infinium.ws.broadcast('/ws/something', utils.adjustIds(infinium.config));
-            infinium.ws.broadcast(WS_UPDATE, { id: 'status', data: utils.adjustIds(infinium.config) });
         }
     }
 

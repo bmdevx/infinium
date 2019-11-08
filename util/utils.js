@@ -172,6 +172,11 @@ class utils {
     static buildUrlFromRequest(req) {
         return `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`;
     }
+
+    static getConfigVar(cv, ev, dv) {
+        return cv !== undefined ? cv :
+            (ev !== undefined ? ev : dv);
+    }
 }
 
 module.exports = utils;
