@@ -105,7 +105,6 @@ POST  /api/schedule/:zone
 
 
 ### WebSocket
-All data is in JSON Format
 ```
 /ws/status      Gets Status
 /ws/config      Gets Config
@@ -113,7 +112,8 @@ All data is in JSON Format
 /ws/:key        Gets specic data where ':key' is the data type.
 ```
 
-##### Known Data from System
+##### Data Events from Infinium
+###### *Some events may not be available depending on your system*
  * config
  * dealer
  * energy
@@ -129,6 +129,7 @@ All data is in JSON Format
  * odu_faults
  * odu_status
  * profile
+ * release_notes
  * root_cause
  * status
  * system

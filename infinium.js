@@ -56,14 +56,14 @@ class Infinium {
     constructor(config = {}) {
         const infinium = this;
 
-        const port = utils.getConfigVar(config.port, process.env.INFINIUM_PORT, DEFAULT_LISTEN_PORT);
-        const wsEnabled = utils.getConfigVar(config.enableWs, process.env.INFINIUM_WS_ENABLED, DEFAULT_WS_ENABLED);
-        const apiEnabled = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
-        const keepOtherHistory = utils.getConfigVar(config.keepOtherHistory, process.env.INFINIUM_KEEP_OTHER_HISTORY, DEFAULT_KEEP_OTHER_HISTORY);
-        const forwardInterval = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
-        const weatherRefreshRate = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
-        const debugMode = utils.getConfigVar(config.debugMode, process.env.INFINIUM_DEBUG_MODE, DEBUG_MODE);
-        const tzOffset = utils.getConfigVar(config.tz, process.env.INFINIUM_TZ, DEFAULT_TZ);
+        const PORT = utils.getConfigVar(config.port, process.env.INFINIUM_PORT, DEFAULT_LISTEN_PORT);
+        const WS_ENABLED = utils.getConfigVar(config.enableWs, process.env.INFINIUM_WS_ENABLED, DEFAULT_WS_ENABLED);
+        const API_ENABLED = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
+        const KEEP_OTHER_HISTORY = utils.getConfigVar(config.keepOtherHistory, process.env.INFINIUM_KEEP_OTHER_HISTORY, DEFAULT_KEEP_OTHER_HISTORY);
+        const FORWARD_INTERVAL = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
+        const WEATHER_REFRESH_RATE = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
+        const DEBUG = utils.getConfigVar(config.debugMode, process.env.INFINIUM_DEBUG_MODE, DEBUG_MODE);
+        const TZ = utils.getConfigVar(config.tz, process.env.INFINIUM_TZ, DEFAULT_TZ);
 
         const xmlBuilder = new xml2js.Builder({ headless: true });
         const xmlParser = new xml2js.Parser({ explicitArray: false });
@@ -71,7 +71,7 @@ class Infinium {
             xmlParser.parseString(xml, callback);
         };
 
-        const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: forwardInterval });
+        const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: FORWARD_INTERVAL });
         const server = express();
 
         infinium.eventEmitter = new events.EventEmitter();
@@ -81,13 +81,13 @@ class Infinium {
 
 
         const debug = function (msg, trace = false, logToFile = false) {
-            if (debugMode || trace) {
+            if (DEBUG || trace) {
                 console.log(msg);
             }
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(tzOffset)} : debug : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : debug : ${msg}\n`, 'utf8');
                 } catch (e) {
                     error(e);
                 }
@@ -99,7 +99,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(tzOffset)} : error : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : error : ${msg}\n`, 'utf8');
                 } catch (e) {
                     console.error(e);
                 }
@@ -111,7 +111,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(tzOffset)} : warn : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : warn : ${msg}\n`, 'utf8');
                 } catch (e) {
                     console.error(e);
                 }
@@ -270,20 +270,20 @@ class Infinium {
         //Express Start/Stop
         infinium.startServer = function () {
             if (!infinium.running) {
-                server.listen(port, () => {
+                server.listen(PORT, () => {
                     infinium.running = true;
 
-                    debug(`Listening on port ${port}`, true, true);
+                    debug(`Listening on port ${PORT}`, true, true);
 
-                    if (apiEnabled) {
+                    if (API_ENABLED) {
                         debug(`Remote API is Enabled`, true, true);
                     }
 
-                    if (keepOtherHistory) {
+                    if (KEEP_OTHER_HISTORY) {
                         debug(`Keep Other History Enabled '${DATA_HISTORY_DIR}'`, true, true);
                     }
 
-                    if (debugMode) {
+                    if (DEBUG) {
                         debug('Debug Mode Enabled');
                     }
                 });
@@ -361,6 +361,15 @@ class Infinium {
                 if (!err) {
                     res.send(data);
                     debug('Sending Manifest');
+
+                    parseXml2Json(data, (err, obj) => {
+                        if (!err) {
+                            infinium.eventEmitter.emit('manifest', obj);
+                            infinium.eventEmitter.emit('update', 'manifest', obj);
+                        } else {
+                            error(err);
+                        }
+                    });
                 } else {
                     res.send('');
                     error('manifest- ' + err);
@@ -380,7 +389,10 @@ class Infinium {
             }
 
             cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
-                if (err) {
+                if (!err) {
+                    infinium.eventEmitter.emit('release_notes', data);
+                    infinium.eventEmitter.emit('update', 'release_notes', data);
+                } else {
                     error(err);
                 }
             });
@@ -569,8 +581,8 @@ class Infinium {
                 try {
                     fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
 
-                    if (keepOtherHistory) {
-                        var dt = new Date().toISOStringLocal(tzOffset).replace(/:/g, '-').replace('T', '_').replace('Z', '');
+                    if (KEEP_OTHER_HISTORY) {
+                        var dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
                         fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
                     }
                 } catch (e) {
@@ -594,7 +606,7 @@ class Infinium {
         server.get('/weather/:zip/forecast', (req, res) => {
             var now = new Date().getTime();
 
-            if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > weatherRefreshRate)) {
+            if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > WEATHER_REFRESH_RATE)) {
                 infinium.weatherProvider.getWeather(utils.copyRequest(req), (err, xmlWeather) => {
                     if (!err) {
                         res.send(xmlWeather);
@@ -625,7 +637,7 @@ class Infinium {
         });
 
 
-        if (apiEnabled) {
+        if (API_ENABLED) {
             server.get('/api/status', (req, res) => {
                 res.send(infinium.status ? utils.adjustIds(infinium.status.status) : '');
             });
@@ -765,7 +777,7 @@ class Infinium {
             });
         }
 
-        if (wsEnabled) {
+        if (WS_ENABLED) {
             infinium.ws = {};
             infinium.ws.server = expressWS(server);
 
@@ -839,7 +851,7 @@ class Infinium {
             });
         }
 
-        if (keepOtherHistory && !fs.existsSync(DATA_HISTORY_DIR)) {
+        if (KEEP_OTHER_HISTORY && !fs.existsSync(DATA_HISTORY_DIR)) {
             try {
                 fs.mkdirSync(DATA_HISTORY_DIR, { recursive: true });
             } catch (e) {
