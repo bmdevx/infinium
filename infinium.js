@@ -11,6 +11,7 @@ const WundergroundWeatherProvider = require('./util/wunderground-weather-provide
 
 const DEBUG_MODE = false;
 
+const DEFAULT_TZ = 0;
 const DEFAULT_LISTEN_PORT = 3000;
 const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
@@ -62,6 +63,7 @@ class Infinium {
         const forwardInterval = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
         const weatherRefreshRate = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
         const debugMode = utils.getConfigVar(config.debugMode, process.env.INFINIUM_DEBUG_MODE, DEBUG_MODE);
+        const tzOffset = utils.getConfigVar(config.tz, process.env.INFINIUM_TZ, DEFAULT_TZ);
 
         const xmlBuilder = new xml2js.Builder({ headless: true });
         const xmlParser = new xml2js.Parser({ explicitArray: false });
@@ -85,7 +87,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal()} : debug : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(tzOffset)} : debug : ${msg}\n`, 'utf8');
                 } catch (e) {
                     error(e);
                 }
@@ -97,7 +99,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal()} : error : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(tzOffset)} : error : ${msg}\n`, 'utf8');
                 } catch (e) {
                     console.error(e);
                 }
@@ -109,7 +111,7 @@ class Infinium {
 
             if (logToFile) {
                 try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal()} : warn : ${msg}\n`, 'utf8');
+                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(tzOffset)} : warn : ${msg}\n`, 'utf8');
                 } catch (e) {
                     console.error(e);
                 }
@@ -345,7 +347,7 @@ class Infinium {
                     $: {
                         "version": "1.9"
                     },
-                    utc: new Date().toISOStringLocal()
+                    utc: new Date().toISOString()
                 }
             });
 
@@ -568,7 +570,7 @@ class Infinium {
                     fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
 
                     if (keepOtherHistory) {
-                        var dt = new Date().toISOStringLocal().replace(/:/g, '-').replace('T', '_').replace('Z', '');
+                        var dt = new Date().toISOStringLocal(tzOffset).replace(/:/g, '-').replace('T', '_').replace('Z', '');
                         fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
                     }
                 } catch (e) {

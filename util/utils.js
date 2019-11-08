@@ -180,8 +180,10 @@ class utils {
 }
 
 //Local ISO Format
-Date.prototype.toISOStringLocal = function () {
-    return new Date(this.getTime() - (this.getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
+Date.prototype.toISOStringLocal = function (tzOffset) {
+    return (typeof tzOffset === 'number' && tzOffset !== 0) ?
+        new Date(this.getTime() + (tzOffset * 3600000)).toISOString().slice(0, -1) :
+        new Date(this.getTime() - (this.getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
 }
 
 module.exports = utils;

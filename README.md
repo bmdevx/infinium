@@ -52,6 +52,9 @@ INFINIUM_KEEP_OTHER_HISTORY = false
 INFINIUM_FORWARD_INTERVAL = 90000
 INFINIUM_WEATHER_REFRESH_RATE = 90000
 INFINIUM_DEBUG_MODE = false
+INFINIUM_DATA = /data/
+INFINIUM_HISTORY_DATA = /data/history/
+INFINIUM_TZ = 0  #Sets the timezone if the system does not have it set
 ```
 
 
@@ -120,6 +123,7 @@ All data is in JSON Format
  * idu_config
  * idu_faults
  * idu_status
+ * manifest
  * notifications
  * odu_config
  * odu_faults
