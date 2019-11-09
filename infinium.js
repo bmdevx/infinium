@@ -147,7 +147,7 @@ class Infinium {
                     try {
                         fs.writeFileSync(STATUS_XML, infinium.xmlStatus);
                     } catch (e) {
-                        error('Unable to save status.xml' + e);
+                        error(`Unable to save status.xml ${e}`);
                     }
                 }
             };
@@ -183,7 +183,7 @@ class Infinium {
                     try {
                         fs.writeFileSync(SYSTEM_XML, infinium.xmlSystem);
                     } catch (e) {
-                        error('Unable to save system.xml\n' + e);
+                        error(`Unable to save system.xml ${e}`);
                     }
                 }
             };
@@ -225,7 +225,7 @@ class Infinium {
                     try {
                         fs.writeFileSync(CONFIG_XML, infinium.xmlConfig);
                     } catch (e) {
-                        error('Unable to save config.xml' + e);
+                        error(U`nable to save config.xml ${e}`);
                     }
                 }
             };
@@ -372,7 +372,7 @@ class Infinium {
                     });
                 } else {
                     res.send('');
-                    error('manifest- ' + err);
+                    error(`manifest- ${err}`);
                     debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
                 }
             });
@@ -518,7 +518,7 @@ class Infinium {
                             } else {
                                 res.send(buildResponse());
                                 error('Received Status Response from Carrier but it Failed to parse.');
-                                debug('Sent Status Response - Changes: ' + infinium.changes);
+                                debug(`Sent Status Response - Changes: ${infinium.changes}`);
                             }
 
                             infinium.changes = false;
@@ -586,7 +586,7 @@ class Infinium {
                         fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
                     }
                 } catch (e) {
-                    error(`Unable to save ${key}.xml ` + e);
+                    error(`Unable to save ${key}.xml ${e}`);
                 }
             }
 
@@ -617,7 +617,7 @@ class Infinium {
                         try {
                             fs.writeFileSync(WEATHER_XML, xmlWeather);
                         } catch (e) {
-                            error(`Unable to save weather.xml` + e);
+                            error(`Unable to save weather.xml ${e}`);
                         }
                     } else {
                         res.send('');
@@ -631,7 +631,7 @@ class Infinium {
         });
 
         server.get('/:key', (req, res) => {
-            var msg = 'Unknown Request (GET): /' + req.params['key'];
+            var msg = `Unknown Request (GET): /${req.params['key']}`;
             debug(msg, true, true);
             res.send(msg);
         });
@@ -799,7 +799,7 @@ class Infinium {
                         }
                     }
                 } catch (e) {
-                    error(`WS Broadcast (${path}) ` + e);
+                    error(`WS Broadcast (${path}) ${e}`);
                 }
             }
 
