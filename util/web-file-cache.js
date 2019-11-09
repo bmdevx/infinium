@@ -120,7 +120,7 @@ class WebFileCache {
         if (this.cache.has(key)) {
             fcc = this.cache.get(key);
 
-            if (config.fileName && !fcc.file.endsWith(fileName)) {
+            if (config.fileName && !fcc.file.endsWith(config.fileName)) {
                 fcc.file = config.fileName;
             }
         } else {
@@ -137,7 +137,6 @@ class WebFileCache {
                         try {
                             fs.writeFileSync(fcc.file, data, 'utf8');
                             fcc.lastRetrieved = new Date().getTime();
-                            this.saveCache();
                             callback(null, data, true);
                         } catch (e) {
                             callback(e, data, true);
@@ -148,6 +147,8 @@ class WebFileCache {
                 } else {
                     callback(`Request Error (${req.url}): ${err}`);
                 }
+
+                this.saveCache();
             });
         } else {
             fs.readFile(fcc.file, 'utf8', (err, data) => {

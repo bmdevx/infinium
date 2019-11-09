@@ -533,7 +533,7 @@ class Infinium {
                 res.send(buildResponse());
                 infinium.changes = false;
 
-                debug(`Sending Status Response - Changes: ${infinium.changes}`);
+                debug(`Sending Status Response - Changes: ${infinium.changes.toString()}`);
             }
         });
 
