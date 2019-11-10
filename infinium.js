@@ -118,6 +118,10 @@ class Infinium {
             }
         }
 
+        const warnRetCar = function (what, err, logToFile = true) {
+            warn(`Unable to retreive ${what} from Carrier - ${err}`, logToFile);
+        }
+
         //Updaters
         infinium.updateStatus = function (newStatus, loading = false) {
             var process = function (xmlNewStatus, jsonNewStatus) {
@@ -372,8 +376,7 @@ class Infinium {
                     });
                 } else {
                     res.send('');
-                    error(`manifest- ${err}`);
-                    debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
+                    warnRetCar('Manifest', err);
                 }
             });
         });
@@ -393,7 +396,7 @@ class Infinium {
                     infinium.eventEmitter.emit('release_notes', data);
                     infinium.eventEmitter.emit('update', 'release_notes', data);
                 } else {
-                    error(err);
+                    warnRetCar('Release Notes', err);
                 }
             });
 
@@ -410,7 +413,7 @@ class Infinium {
 
             cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
                 if (err) {
-                    error(err);
+                    warnRetCar('System Firmware', err);
                 }
 
                 var notice = {
@@ -456,7 +459,7 @@ class Infinium {
                 if (!err) {
                     infinium.updateConfig(data, true);
                 } else {
-                    error(`[GET](${req.path}) - ${err}`);
+                    warnRetCar('Config', err);
                 }
 
                 if (sendFromCarrier) {
@@ -486,7 +489,7 @@ class Infinium {
             }
 
             cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
-                //ignore
+                warnRetCar('System Response', err);
             });
 
             res.send('');
@@ -530,7 +533,7 @@ class Infinium {
 
                         infinium.sendStatusToCarrier = null;
                     } else {
-                        error(err);
+                        warnRetCar('Status Reponse', err);
                     }
                 });
             } else {
@@ -542,13 +545,14 @@ class Infinium {
 
         //Thermostat requesting other data
         server.get('/systems/:system_id/:key', (req, res) => {
+            debug(`Retreiving Weather Data from: ${utils.buildUrlFromRequest(req)}`)
             cache.get({ request: utils.copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
                     debug(`Sending Carrier Response to: [GET] ${req.path}`)
                 } else {
                     res.send('');
-                    error(`Unable to retrieve: [GET] ${req.path} - ${err}`);
+                    warnRetCar(`[GET] ${req.path}`, err);
                 }
             });
         });
@@ -596,7 +600,7 @@ class Infinium {
                     debug(`Sending Carrier Response to: [POST] ${req.path}`)
                 } else {
                     res.send('');
-                    error(`Other Data (${key}) - ${err}`);
+                    warnRetCar(`(${key}) Response`, err);
                 }
             });
         });
@@ -606,6 +610,7 @@ class Infinium {
             var now = new Date().getTime();
 
             if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > WEATHER_REFRESH_RATE)) {
+                debug(`Retreiving Weather Data from ${infinium.weatherProvider.getName()}`)
                 infinium.weatherProvider.getWeather(utils.copyRequest(req), (err, xmlWeather) => {
                     if (!err) {
                         res.send(xmlWeather);
