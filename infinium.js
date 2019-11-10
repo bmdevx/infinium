@@ -70,16 +70,6 @@ class Infinium {
         const parseXml2Json = function (xml, callback) {
             xmlParser.parseString(xml, callback);
         };
-
-        const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: FORWARD_INTERVAL });
-        const server = express();
-
-        infinium.eventEmitter = new events.EventEmitter();
-        infinium.running = false;
-        infinium.changes = false;
-        infinium.loading = true;
-
-
         const debug = function (msg, trace = false, logToFile = false) {
             if (DEBUG || trace) {
                 console.log(msg);
@@ -92,8 +82,7 @@ class Infinium {
                     error(e);
                 }
             }
-        }
-
+        };
         const error = function (msg, logToFile = true) {
             console.error(msg);
 
@@ -104,8 +93,7 @@ class Infinium {
                     console.error(e);
                 }
             }
-        }
-
+        };
         const warn = function (msg, logToFile = true) {
             console.warn(msg);
 
@@ -116,11 +104,26 @@ class Infinium {
                     console.error(e);
                 }
             }
-        }
-
+        };
         const warnRetCar = function (what, err, logToFile = true) {
             warn(`Unable to retreive ${what} from Carrier - ${err}`, logToFile);
+        };
+
+
+        const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: FORWARD_INTERVAL });
+        const server = express();
+
+        infinium.eventEmitter = new events.EventEmitter();
+        infinium.running = false;
+        infinium.changes = false;
+        infinium.loading = true;
+
+        infinium.log = {
+            debug: debug,
+            error: error,
+            warn: warn
         }
+
 
         //Updaters
         infinium.updateStatus = function (newStatus, loading = false) {
@@ -327,12 +330,12 @@ class Infinium {
 
         //server 
         server.use(bodyparser.json());
-        server.use(bodyparser.urlencoded({ extended: false }));
+        server.use(bodyparser.urlencoded({ extended: true }));
 
 
         server.get('/', (req, res) => {
             //main page
-            res.send('Infinium Server');
+            res.send('Infinium');
         });
 
 
@@ -359,6 +362,7 @@ class Infinium {
         });
 
 
+        //Thermostat retreiving manifest
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
             cache.get({ request: utils.copyRequest(req), fileName: MANIFEST_XML }, (err, data, fromWeb) => {
@@ -381,6 +385,7 @@ class Infinium {
             });
         });
 
+        //Thermostat retreiving release notes
         server.get('/releaseNotes/:id', (req, res) => {
             debug('Retreiving Release Notes');
 
@@ -404,6 +409,7 @@ class Infinium {
             });
         });
 
+        //Thermostat retreiving firmware
         server.get('/updates/:key', (req, res) => {
             debug('Retreiving System Firmware');
 
@@ -612,6 +618,7 @@ class Infinium {
         });
 
 
+        //Thermostat retreiving weather forecast
         server.get('/weather/:zip/forecast', (req, res) => {
             var now = new Date().getTime();
 
@@ -640,6 +647,7 @@ class Infinium {
             }
         });
 
+        //Catch for all other requests
         server.all('/:key', (req, res) => {
             var msg = `Unknown Request${req.method ? ` (${req.method})` : ''}: /${req.params['key']}`;
             debug(msg, true, true);
@@ -648,11 +656,14 @@ class Infinium {
         });
 
 
+        //Infinium REST API
         if (API_ENABLED) {
+            //Get System Status
             server.get('/api/status', (req, res) => {
                 res.send(infinium.status ? utils.adjustIds(infinium.status.status) : '');
             });
 
+            //Get activity of a Zone
             server.get('/api/activity/:zone/:activity', (req, res) => {
                 var zone;
                 if (!(zone = utils.validateZone(req.params.zone))) {
@@ -660,10 +671,10 @@ class Infinium {
                 } else if (!Activities.All.includes(req.params.activity.toLowerCase())) {
                     res.send('Invalid Activity');
                 } else {
-                    var activity = utils.adjustIds(utils.getActivity(this.system, zone, req.params.activity));
+                    var activity = utils.getActivity(this.system, zone, req.params.activity);
 
                     if (activity) {
-                        res.send(activity);
+                        res.json(utils.adjustIds(activity));
                     } else {
                         res.send('');
                     }
@@ -671,22 +682,7 @@ class Infinium {
 
             });
 
-            server.get('/api/schedule/:zone', (req, res) => {
-                var zone;
-                if (!(zone = utils.validateZone(req.params.zone))) {
-                    res.send('Invalid Zone');
-                } else {
-                    var schedule = utils.getDay(utils.getZone(infinium.system, zone)).program;
-
-                    if (schedule) {
-                        res.send(utils.adjustIds(schedule, true));
-                    } else {
-                        res.send('');
-                    }
-                }
-
-            });
-
+            //Get activity of a Zone
             server.get('/api/schedule/:zone/:day', (req, res) => {
                 var zone;
                 if (!(zone = utils.validateZone(req.params.zone))) {
@@ -697,7 +693,7 @@ class Infinium {
                     var schedule = utils.getDay(utils.getZone(infinium.system, zone).program, req.params.day);
 
                     if (schedule) {
-                        res.send(utils.adjustIds(schedule, true));
+                        res.json(utils.adjustIds(schedule, true));
                     } else {
                         res.send('');
                     }
@@ -705,6 +701,24 @@ class Infinium {
 
             });
 
+            //Get Schedule for a Zone
+            server.get('/api/schedule/:zone', (req, res) => {
+                var zone;
+                if (!(zone = utils.validateZone(req.params.zone))) {
+                    res.send('Invalid Zone');
+                } else {
+                    var schedule = utils.getDay(utils.getZone(infinium.system, zone)).program;
+
+                    if (schedule) {
+                        res.json(utils.adjustIds(schedule, true));
+                    } else {
+                        res.send('');
+                    }
+                }
+
+            });
+
+            //Get all data for a Zone
             server.get('/api/zone/:zone', (req, res) => {
                 var zone;
                 if (!(zone = utils.validateZone(req.params.zone))) {
@@ -713,7 +727,7 @@ class Infinium {
                     var zone = utils.adjustIds(utils.getZone(this.system, zone));
 
                     if (zone) {
-                        res.send(utils.adjustIds(zone, true));
+                        res.json(utils.adjustIds(zone, true));
                     } else {
                         res.send('');
                     }
@@ -722,6 +736,7 @@ class Infinium {
             });
 
 
+            //Set an Activity for a Zone
             server.post('/api/activity/:zone/:activity', (req, res) => {
                 if (req.params.zone && req.params.activity &&
                     (req.body.clsp || req.body.htsp || req.body.fan)) {
@@ -734,14 +749,8 @@ class Infinium {
                                 res.send(err);
                                 warn(err);
                             } else {
+                                debug(`Activity has been set from: ${req.connection.remoteAddress}`)
                                 res.send('sucess');
-                                debug(`Activity Set (${req.params.zone},${req.params.activity}:${
-                                    req.body.clsp ? req.body.clsp : '*'
-                                    },${
-                                    req.body.htsp ? req.body.htsp : '*'
-                                    },${
-                                    req.body.fan ? req.body.fan : '*'
-                                    }) from: ${req.connection.remoteAddress}`, true, true);
                             }
                         });
                 } else {
@@ -749,6 +758,7 @@ class Infinium {
                 }
             });
 
+            //Set a Hold for a Zone
             server.post('/api/hold/:zone', (req, res) => {
                 if (req.params.zone) {
                     const activity = req.body.activity || 'home';
@@ -761,8 +771,8 @@ class Infinium {
                                 res.send(err);
                                 warn(err);
                             } else {
+                                debug(`Hold has been set from: ${req.connection.remoteAddress}`);
                                 res.send('sucess');
-                                debug(`Hold Set (${req.params.zone},${activity},${holdUntil ? holdUntil : '*'}) from: ${req.connection.remoteAddress}`, true, true);
                             }
                         });
                 } else {
@@ -770,6 +780,7 @@ class Infinium {
                 }
             });
 
+            //Set a Schedule for a Zone
             server.post('/api/schedule/:zone', (req, res) => {
                 if (req.params.zone && req.body.schedule) {
                     this.setSchedule(req.params.zone, JSON.parse(req.body.schedule),
@@ -778,8 +789,8 @@ class Infinium {
                                 res.send(err);
                                 warn(err);
                             } else {
+                                debug(`Schedule has been updated from: ${req.connection.remoteAddress}`);
                                 res.send('sucess');
-                                debug(`Schedule for Zone ${req.params.zone} updated from: ${req.connection.remoteAddress}`, true, true);
                             }
                         });
                 } else {
@@ -788,6 +799,7 @@ class Infinium {
             });
         }
 
+        //Infinium Websockets
         if (WS_ENABLED) {
             infinium.ws = {};
             infinium.ws.server = expressWS(server);
@@ -814,7 +826,7 @@ class Infinium {
                 }
             }
 
-
+            //Listen for System Status
             server.ws(WS_STATUS, (ws, req) => {
                 ws.route = WS_STATUS;
 
@@ -825,6 +837,7 @@ class Infinium {
                 debug(`Client connected to ${WS_STATUS}`);
             });
 
+            //Listen for System Config Change
             server.ws(WS_CONFIG, (ws, req) => {
                 ws.route = WS_CONFIG;
 
@@ -835,6 +848,7 @@ class Infinium {
                 debug(`Client connected to ${WS_CONFIG}`);
             });
 
+            //Listen for everything else
             server.ws(WS_UPDATE, (ws, req) => {
                 ws.route = WS_UPDATE;
 
@@ -845,6 +859,7 @@ class Infinium {
                 debug(`Client connected to ${WS_UPDATE}`);
             });
 
+            //Listen for a specific type of data
             server.ws('/ws/:key', (ws, req) => {
                 const key = req.params.key;
 
@@ -960,6 +975,15 @@ class Infinium {
                                 szone.otmr = (holdUntil) ? holdUntil : '';
 
                                 this.applySystemChanges(system);
+                                this.log.debug(`Hold Set (${
+                                    czone
+                                    },${
+                                    activity
+                                    },${
+                                    szone.hold
+                                    },${
+                                    holdUntil ? holdUntil : '*'
+                                    })`, true, true);
 
                                 if (callback)
                                     callback(null, utils.adjustIds(szone));
@@ -1009,6 +1033,14 @@ class Infinium {
                                     }
 
                                     this.applySystemChanges(system);
+
+                                    this.log.debug(`Activity Set (${czone},${activity}:${
+                                        cclsp ? cclsp : '*'
+                                        },${
+                                        chtsp ? chtsp : '*'
+                                        },${
+                                        fan ? fan : '*'
+                                        })`, true, true);
 
                                     if (callback)
                                         callback(null, utils.adjustIds(activity));
@@ -1149,6 +1181,8 @@ class Infinium {
                 });
 
                 this.applySystemChanges(system);
+                this.log.debug(`Schedule for Zone ${czone} Updated`, true, true);
+
                 callback(null, utils.adjustIds(program));
             } else if (callback) {
                 callback(`Invalid Zone: ${zone}`);
