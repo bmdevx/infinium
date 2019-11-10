@@ -4,10 +4,10 @@ const bodyparser = require('body-parser');
 const events = require('events');
 const xml2js = require('xml2js');
 const fs = require('fs');
-const utils = require('./util/utils.js')
-const WebFileCache = require('./util/web-file-cache.js');
-const CarrierWeatherProvider = require('./util/carrier-weather-provider.js');
-const WundergroundWeatherProvider = require('./util/wunderground-weather-provider.js');
+const utils = require('./utils/utils.js')
+const WebFileCache = require('./utils/web-file-cache.js');
+const CarrierWeatherProvider = require('./utils/carrier-weather-provider.js');
+const WundergroundWeatherProvider = require('./utils/wunderground-weather-provider.js');
 
 const DEBUG_MODE = false;
 
@@ -408,7 +408,7 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: req, fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
                 if (err) {
                     error(err);
                 }
@@ -445,17 +445,17 @@ class Infinium {
                     config: infinium.system.system.config
                 });
                 res.send(newXmlConfig);
-            } else {
-                cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML }, (err, data, fromWeb) => {
-                    if (!err) {
-                        infinium.updateConfig(data, true);
-                        res.send(infinium.xmlConfig);
-                    } else {
-                        res.send('');
-                        error(err);
-                    }
-                });
             }
+
+            cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML, forwardInterval: 3600000 }, (err, data, fromWeb) => {
+                if (!err) {
+                    infinium.updateConfig(data, true);
+                } else {
+                    error(`[GET](${req.path}) - ${err}`);
+                }
+
+                res.send(infinium.xmlConfig ? infinium.xmlConfig : '');
+            });
 
             this.changes = false;
         });
@@ -475,7 +475,7 @@ class Infinium {
         server.post('/systems/:id', (req, res) => {
             debug('Receiving system.xml');
 
-            if (req.body.data !== 'error') {
+            if (req.body.data) {
                 infinium.updateSystem(req.body.data);
             }
 
@@ -490,7 +490,7 @@ class Infinium {
         server.post('/systems/:system_id/status', (req, res) => {
             debug('Receiving status.xml');
 
-            if (req.body.data !== 'error') {
+            if (req.body.data) {
                 infinium.updateStatus(req.body.data);
             }
 
@@ -506,7 +506,7 @@ class Infinium {
             }
 
             if (infinium.sendStatusToCarrier && new Date().getTime() > infinium.sendStatusToCarrier) {
-                cache.get({ request: utils.copyRequest(req), refresh: true }, (err, data, fromWeb) => {
+                cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
                     if (!err) {
                         parseXml2Json(data, (err, obj) => {
                             if (!err) {
@@ -532,7 +532,6 @@ class Infinium {
             } else {
                 res.send(buildResponse());
                 infinium.changes = false;
-
                 debug(`Sending Status Response - Changes: ${infinium.changes.toString()}`);
             }
         });
@@ -540,15 +539,13 @@ class Infinium {
 
         //Thermostat requesting other data
         server.get('/systems/:system_id/:key', (req, res) => {
-            var key = req.params.key;
-
             cache.get({ request: utils.copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
+                    debug(`Sending Carrier Response to: [GET] ${req.path}`)
                 } else {
                     res.send('');
                     error(err);
-                    debug(`Request: ${utils.stringifyCirc(req)}`, false, true);
                 }
             });
         });
@@ -558,7 +555,7 @@ class Infinium {
             var key = req.params.key;
             debug(`Receiving ${key}.xml`);
 
-            if (req.body.data !== 'error') {
+            if (req.body.data) {
                 parseXml2Json(req.body.data, (err, obj) => {
                     if (!err) {
                         var data = utils.adjustIds(obj);
@@ -593,11 +590,10 @@ class Infinium {
             cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
+                    debug(`Sending Carrier Response to: [POST] ${req.path}`)
                 } else {
                     res.send('');
                     error(`Other Data (${key}) - ${err}`);
-                    debug(`Copied Request: ${utils.stringifyCirc(utils.copyRequest(req))}\n`, false, true);
-                    debug(`Request: ${utils.stringifyCirc(req)}\n`, false, true);
                 }
             });
         });
@@ -621,7 +617,7 @@ class Infinium {
                         }
                     } else {
                         res.send('');
-                        error(err);
+                        error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${err}`);
                     }
                 });
             } else if (infinium.xmlWeather) {
@@ -630,10 +626,11 @@ class Infinium {
             }
         });
 
-        server.get('/:key', (req, res) => {
-            var msg = `Unknown Request (GET): /${req.params['key']}`;
+        server.all('/:key', (req, res) => {
+            var msg = `Unknown Request${req.method ? ` (${req.method})` : ''}: /${req.params['key']}`;
             debug(msg, true, true);
-            res.send(msg);
+            res.statusMessage = "Invalid Request";
+            res.status(400).end();
         });
 
 

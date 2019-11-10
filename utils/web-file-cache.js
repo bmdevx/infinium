@@ -86,7 +86,7 @@ class WebFileCache {
                 config.req = req;
             }
 
-            if (obj.url) {
+            if (obj.url || (obj.hostname && obj.path)) {
                 req = obj;
                 config.req = req;
             }
@@ -110,8 +110,14 @@ class WebFileCache {
 
         if (!req) {
             throw 'Error: No Request';
-        } else if (typeof req !== 'string' && !req.url.includes(':')) {
-            req.url = `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`;
+        } else if (typeof req !== 'string') {
+            if (!req.url.includes(':')) {
+                req.url = `${req.protocol || 'http'}://${req.hostname || req.host}${req.baseUrl || req.path}`;
+            }
+
+            if (!req.timeout) {
+                req.timeout = 2000;
+            }
         }
 
         var key = this.requestToKey(config);
@@ -131,6 +137,7 @@ class WebFileCache {
         var time = (new Date().getTime() - fcc.lastRetrieved);
 
         if (config.refresh || (time > fcc.forwardInterval) || !fs.exists(fcc.file)) {
+            const method = req.method;
             request(req, (err, res, data) => {
                 if (!err) {
                     if (res.statusCode === 200) {
@@ -142,10 +149,10 @@ class WebFileCache {
                             callback(e, data, true);
                         }
                     } else {
-                        callback(`Request Status Error (${req.url}): ${res.statusCode}`);
+                        callback(`Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
                     }
                 } else {
-                    callback(`Request Error (${req.url}): ${err}`);
+                    callback(`Request Error ${method ? `[${method}]` : ''}(${req.url}): ${err}`);
                 }
 
                 this.saveCache();

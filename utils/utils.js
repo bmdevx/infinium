@@ -162,11 +162,21 @@ class utils {
     }
 
     static copyRequest(req) {
-        return {
+        var creq = {
             url: this.buildUrlFromRequest(req),
             headers: req.headers,
             method: req.method
         }
+
+        if (req.method === 'POST' && req.body) {
+            creq.body = req.body ? (typeof req.body === 'object' ? JSON.stringify(req.body) : req.body) : undefined
+        }
+
+        if (req.protocol) {
+            creq.protocol = req.protocol ? (req.protocol.includes(':') ? req.protocol : req.protocol + ':') : 'http:';
+        }
+
+        return creq;
     }
 
     static buildUrlFromRequest(req) {

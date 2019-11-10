@@ -1,6 +1,6 @@
 const xml2js = require('xml2js');
-const WeatherProvider = require('./weather-provider');
-const WeatherUndergroundNode = require('./weather-underground-node');
+const WeatherProvider = require('./weather-provider.js');
+const WeatherUndergroundNode = require('./weather-underground-node.js');
 
 
 const carrierWeatherMap = [
