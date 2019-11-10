@@ -382,7 +382,7 @@ class Infinium {
         });
 
         server.get('/releaseNotes/:id', (req, res) => {
-            debug('Sending releaseNotes');
+            debug('Retreiving Release Notes');
 
             var fileName = 'releaseNotes.txt';
 
@@ -398,12 +398,15 @@ class Infinium {
                 } else {
                     warnRetCar('Release Notes', err);
                 }
-            });
 
-            res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
+                debug('Sending Release Notes');
+                res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
+            });
         });
 
         server.get('/updates/:key', (req, res) => {
+            debug('Retreiving System Firmware');
+
             var fileName = 'system-update.hex';
 
             if (req.path) {
@@ -456,6 +459,8 @@ class Infinium {
             }
 
             cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML, refresh: sendFromCarrier, forwardInterval: 3600000 }, (err, data, fromWeb) => {
+                debug('Retreiving Config');
+
                 if (!err) {
                     infinium.updateConfig(data, true);
                 } else {
@@ -545,7 +550,8 @@ class Infinium {
 
         //Thermostat requesting other data
         server.get('/systems/:system_id/:key', (req, res) => {
-            debug(`Retreiving Weather Data from: ${utils.buildUrlFromRequest(req)}`)
+            debug(`Retreiving ${req.params.key} from: ${utils.buildUrlFromRequest(req)}`)
+
             cache.get({ request: utils.copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
