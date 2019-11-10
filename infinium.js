@@ -558,10 +558,32 @@ class Infinium {
         server.get('/systems/:system_id/:key', (req, res) => {
             debug(`Retreiving ${req.params.key} from: ${utils.buildUrlFromRequest(req)}`)
 
-            cache.get({ request: utils.copyRequest(req), forwardInterval: 0 }, (err, data, fromWeb) => {
+            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}_res.xml`, forwardInterval: 0 }, (err, data, fromWeb) => {
                 if (!err) {
                     res.send(data);
                     debug(`Sending Carrier Response to: [GET] ${req.path}`)
+
+                    if (fromWeb) {
+                        parseXml2Json(data, (err, obj) => {
+                            if (!err) {
+                                var data = utils.adjustIds(obj);
+
+                                infinium.eventEmitter.emit(key, data);
+                                infinium.eventEmitter.emit('update', key, data);
+
+                                if (infinium.ws) {
+                                    infinium.ws.broadcast(`/ws/${key}`, data);
+                                    infinium.ws.broadcast(WS_UPDATE, {
+                                        id: key,
+                                        data: data,
+                                        response: true
+                                    });
+                                }
+                            } else {
+                                error(`Failed to parse: [GET] ${key}`);
+                            }
+                        });
+                    }
                 } else {
                     res.send('');
                     warnRetCar(`[GET] ${req.path}`, err);
@@ -636,6 +658,26 @@ class Infinium {
                         } catch (e) {
                             error(`Unable to save weather.xml ${e}`);
                         }
+
+                        parseXml2Json(xmlWeather, (err, obj) => {
+                            if (!err) {
+                                var data = utils.adjustIds(obj);
+
+                                infinium.eventEmitter.emit('weather', data);
+                                infinium.eventEmitter.emit('update', 'weather', data);
+
+                                if (infinium.ws) {
+                                    infinium.ws.broadcast(`/ws/weather`, data);
+                                    infinium.ws.broadcast(WS_UPDATE, {
+                                        id: 'weather',
+                                        data: data,
+                                        response: true
+                                    });
+                                }
+                            } else {
+                                error(`Failed to parse: weather`);
+                            }
+                        });
                     } else {
                         res.send('');
                         error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${err}`);
