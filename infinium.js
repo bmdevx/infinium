@@ -545,7 +545,7 @@ class Infinium {
                     debug(`Sending Carrier Response to: [GET] ${req.path}`)
                 } else {
                     res.send('');
-                    error(err);
+                    error(`Unable to retrieve: [GET] ${req.path} - ${err}`);
                 }
             });
         });

@@ -116,7 +116,7 @@ class WebFileCache {
             }
 
             if (!req.timeout) {
-                req.timeout = 2000;
+                req.timeout = 1500;
             }
         }
 
@@ -136,7 +136,7 @@ class WebFileCache {
 
         var time = (new Date().getTime() - fcc.lastRetrieved);
 
-        if (config.refresh || (time > fcc.forwardInterval) || !fs.exists(fcc.file)) {
+        if (config.refresh || (time > fcc.forwardInterval) || !fs.existsSync(fcc.file)) {
             const method = req.method;
             request(req, (err, res, data) => {
                 if (!err) {
