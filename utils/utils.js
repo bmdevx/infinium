@@ -5,8 +5,8 @@ class utils {
     }
 
     static validateTemp(temp, systemMinTemp, systemMaxTemp) {
-        return (temp === null || ((Number.isInteger(temp) || (typeof (temp = parseInt(temp)) === 'number')) &&
-            !isNaN(temp) && temp >= systemMinTemp && temp <= systemMaxTemp)) ? temp : 0;
+        return (temp === null || (((Number.isInteger(temp) || (typeof (temp = parseInt(temp)) === 'number')) &&
+            !isNaN(temp) && temp >= systemMinTemp && temp <= systemMaxTemp)) ? temp : 0);
     }
 
     static validateTime(time) {
