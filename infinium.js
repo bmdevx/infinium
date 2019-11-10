@@ -436,28 +436,34 @@ class Infinium {
 
         //Thermostat checking for changes
         server.get('/systems/:id/config', (req, res) => {
+            var sendFromCarrier = false;
             if (infinium.xmlConfig) {
                 debug('Sending config.xml');
-                res.send(xmlConfig);
+                res.send(infinium.xmlConfig);
+                this.changes = false;
             } else if (infinium.xmlSystem) {
                 debug('Sending config from system.xml');
                 var newXmlConfig = xmlBuilder.buildObject({
                     config: infinium.system.system.config
                 });
                 res.send(newXmlConfig);
+                this.changes = false;
+            } else {
+                sendFromCarrier = true;
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML, forwardInterval: 3600000 }, (err, data, fromWeb) => {
+            cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML, refresh: sendFromCarrier, forwardInterval: 3600000 }, (err, data, fromWeb) => {
                 if (!err) {
                     infinium.updateConfig(data, true);
                 } else {
                     error(`[GET](${req.path}) - ${err}`);
                 }
 
-                res.send(infinium.xmlConfig ? infinium.xmlConfig : '');
+                if (sendFromCarrier) {
+                    res.send(infinium.xmlConfig ? infinium.xmlConfig : '');
+                    this.changes = false;
+                }
             });
-
-            this.changes = false;
         });
 
         //Thermostat requesting system
@@ -520,8 +526,6 @@ class Infinium {
                                 error('Received Status Response from Carrier but it Failed to parse.');
                                 debug(`Sent Status Response - Changes: ${infinium.changes}`);
                             }
-
-                            infinium.changes = false;
                         })
 
                         infinium.sendStatusToCarrier = null;
@@ -531,7 +535,6 @@ class Infinium {
                 });
             } else {
                 res.send(buildResponse());
-                infinium.changes = false;
                 debug(`Sending Status Response - Changes: ${infinium.changes.toString()}`);
             }
         });
@@ -721,7 +724,7 @@ class Infinium {
                                 warn(err);
                             } else {
                                 res.send('sucess');
-                                debug(`Activity set (${req.params.zone},${req.params.activity}:${
+                                debug(`Activity Set (${req.params.zone},${req.params.activity}:${
                                     req.body.clsp ? req.body.clsp : '*'
                                     },${
                                     req.body.htsp ? req.body.htsp : '*'
@@ -748,7 +751,7 @@ class Infinium {
                                 warn(err);
                             } else {
                                 res.send('sucess');
-                                debug(`Hold set (${req.params.zone},${activity},${holdUntil ? holdUntil : '*'}) from: ${req.connection.remoteAddress}`, true, true);
+                                debug(`Hold Set (${req.params.zone},${activity},${holdUntil ? holdUntil : '*'}) from: ${req.connection.remoteAddress}`, true, true);
                             }
                         });
                 } else {
@@ -976,8 +979,8 @@ class Infinium {
 
             if (czone = utils.validateZone(zone)) {
                 if (Activities.All.includes(activity)) {
-                    if (cclsp = utils.validateTemp(clsp, system.system.config.vacmint, system.system.config.vacmaxt)) {
-                        if (chtsp = utils.validateTemp(htsp, system.system.config.vacmint, system.system.config.vacmaxt)) {
+                    if ((cclsp = utils.validateTemp(clsp, system.system.config.vacmint, system.system.config.vacmaxt)) !== 0) {
+                        if ((chtsp = utils.validateTemp(htsp, system.system.config.vacmint, system.system.config.vacmaxt)) !== 0) {
                             if (fan === null || FanModes.All.includes(fan)) {
                                 activity = utils.getActivity(system, czone, activity);
 
