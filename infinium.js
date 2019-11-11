@@ -663,22 +663,26 @@ class Infinium {
             };
 
             const updateWeather = async (xmlWeather) => {
-                infinium.xmlWeather = xmlWeather;
-                infinium.lastWeatherUpdate = now;
+                if (typeof xmlWeather === 'string') {
+                    infinium.xmlWeather = xmlWeather;
+                    infinium.lastWeatherUpdate = now;
 
-                writeIFile('weather', xmlWeather);
+                    writeIFile('weather', xmlWeather);
 
-                parseXml2Json(xmlWeather)
-                    .then(obj => {
-                        var data = utils.adjustIds(obj);
+                    parseXml2Json(xmlWeather)
+                        .then(obj => {
+                            var data = utils.adjustIds(obj);
 
-                        notify('weather', data, null, {
-                            id: 'weather',
-                            data: data,
-                            response: true
-                        });
-                    })
-                    .catch(e => error(`Failed to parse: weather - ${e}`));
+                            notify('weather', data, null, {
+                                id: 'weather',
+                                data: data,
+                                response: true
+                            });
+                        })
+                        .catch(e => error(`Failed to parse: weather - ${e}`));
+                } else {
+                    error('Invalid weather format');
+                }
             };
 
             if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > WEATHER_REFRESH_RATE)) {
@@ -689,6 +693,7 @@ class Infinium {
                 if (weather instanceof Promise) {
                     weather
                         .then(xmlWeather => {
+                            debug(`Sending Weather Data from ${infinium.weatherProvider.getName()}`);
                             updateWeather(xmlWeather)
                             return res.send(xmlWeather);
                         })
