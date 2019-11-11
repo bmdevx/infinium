@@ -3,18 +3,20 @@ const request = require('request');
 
 class CarrierWeatherProvier extends WeatherProvider {
 
-    getWeather(req, callback) {
-        const method = req.method;
-        request(req, (err, res, data) => {
-            if (!err) {
-                if (res.statusCode === 200) {
-                    callback(null, data);
+    getWeather(req) {
+        return new Promise((resolve, reject) => {
+            const method = req.method;
+            request(req, (err, res, data) => {
+                if (!err) {
+                    if (res.statusCode === 200) {
+                        resolve(data);
+                    } else {
+                        reject(`Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
+                    }
                 } else {
-                    callback(`Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
+                    reject(`Request Weather Error - ${err}`);
                 }
-            } else {
-                callback(err);
-            }
+            });
         });
     }
 

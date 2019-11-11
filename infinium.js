@@ -4,6 +4,7 @@ const bodyparser = require('body-parser');
 const events = require('events');
 const xml2js = require('xml2js');
 const fs = require('fs');
+const fsp = require('fs').promises;
 const utils = require('./utils/utils.js')
 const WebFileCache = require('./utils/web-file-cache.js');
 const CarrierWeatherProvider = require('./utils/carrier-weather-provider.js');
@@ -15,23 +16,22 @@ const DEFAULT_TZ = 0;
 const DEFAULT_LISTEN_PORT = 3000;
 const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
-const DEFAULT_KEEP_OTHER_HISTORY = false;
+const DEFAULT_KEEP_HISTORY = false;
 const DEFAULT_FORWARD_INTERVAL = 15 * 60 * 1000; //in millis
 const DEAFULT_WEATHER_REFRESH_RATE = 15 * 60 * 1000; //in millis
+const DEFAULT_HISTORY_EXCLUSIONS = 'config,dealer,idu_config,odu_config,manifest,profile,status,system,weather'
 
 const DATA_DIR = process.env.INFINIUM_DATA || '/data/';
 const DATA_HISTORY_DIR = process.env.INFINIUM_DATA_HISTORY || '/data/history/';
 const CACHE_DIR = DATA_DIR + 'cache/';
 
 const LOG_FILE = DATA_DIR + 'infinium.log';
-const CONFIG_XML = DATA_DIR + 'config.xml';
-const STATUS_XML = DATA_DIR + 'status.xml';
-const SYSTEM_XML = DATA_DIR + 'system.xml';
-const WEATHER_XML = DATA_DIR + 'weather.xml';
-const MANIFEST_XML = DATA_DIR + 'manifest.xml';
+const CONFIG_XML = 'config.xml';
+const STATUS_XML = 'status.xml';
+const SYSTEM_XML = 'system.xml';
 
-const WS_STATUS = '/ws/status';
 const WS_CONFIG = '/ws/config';
+const WS_STATUS = '/ws/status';
 const WS_UPDATE = '/ws/update';
 
 const Activities = {
@@ -51,7 +51,6 @@ const FanModes = {
     All: ['off', 'low', 'med', 'high']
 }
 
-
 class Infinium {
     constructor(config = {}) {
         const infinium = this;
@@ -59,7 +58,9 @@ class Infinium {
         const PORT = utils.getConfigVar(config.port, process.env.INFINIUM_PORT, DEFAULT_LISTEN_PORT);
         const WS_ENABLED = utils.getConfigVar(config.enableWs, process.env.INFINIUM_WS_ENABLED, DEFAULT_WS_ENABLED);
         const API_ENABLED = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
-        const KEEP_OTHER_HISTORY = utils.getConfigVar(config.keepOtherHistory, process.env.INFINIUM_KEEP_OTHER_HISTORY, DEFAULT_KEEP_OTHER_HISTORY);
+        const KEEP_HISTORY = utils.getConfigVar(config.keepHistory, process.env.INFINIUM_KEEP_HISTORY, DEFAULT_KEEP_HISTORY);
+        const HISTORY_EXCLUSIONS = utils.getConfigVar(config.historyExclusions, process.env.INFINIUM_HISTORY_EXCLUSIONS, DEFAULT_HISTORY_EXCLUSIONS);
+        const HISTORY_EXCLUSIONS_ARR = HISTORY_EXCLUSIONS ? HISTORY_EXCLUSIONS.split(',') : [];
         const FORWARD_INTERVAL = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
         const WEATHER_REFRESH_RATE = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
         const DEBUG = utils.getConfigVar(config.debugMode, process.env.INFINIUM_DEBUG_MODE, DEBUG_MODE);
@@ -70,45 +71,63 @@ class Infinium {
         const parseXml2Json = function (xml, callback) {
             xmlParser.parseString(xml, callback);
         };
+        const parseXml2JsonPromise = (xml) => {
+            return xmlParser.parseStringPromise(xml);
+        }
+        const buildXmlPromise = (obj) => {
+            return new Promise((resolve, reject) => {
+                try {
+                    resolve(xmlBuilder.buildObject(obj));
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        }
+
+
         const debug = function (msg, trace = false, logToFile = false) {
             if (DEBUG || trace) {
                 console.log(msg);
             }
 
             if (logToFile) {
-                try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : debug : ${msg}\n`, 'utf8');
-                } catch (e) {
-                    error(e);
-                }
+                fsp.appendFile(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : debug : ${msg}\n`)
+                    .catch(e => warn(e, false));
             }
         };
         const error = function (msg, logToFile = true) {
             console.error(msg);
 
             if (logToFile) {
-                try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : error : ${msg}\n`, 'utf8');
-                } catch (e) {
-                    console.error(e);
-                }
+                fsp.appendFile(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : error : ${msg}\n`)
+                    .catch(e => warn(e, false));
             }
         };
         const warn = function (msg, logToFile = true) {
             console.warn(msg);
 
             if (logToFile) {
-                try {
-                    fs.appendFileSync(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : warn : ${msg}\n`, 'utf8');
-                } catch (e) {
-                    console.error(e);
-                }
+                fsp.appendFile(LOG_FILE, `${new Date().toISOStringLocal(TZ)} : warn : ${msg}\n`)
+                    .catch(e => warn(e, false));
             }
         };
         const warnRetCar = function (what, err, logToFile = true) {
             warn(`Unable to retreive ${what} from Carrier - ${err}`, logToFile);
         };
 
+        const writeIFile = (file, data) => {
+            fsp.writeFile(DATA_DIR + file, data, 'utf8')
+                .catch(e => error(`Unable to save ${file} ${e}`));
+
+            if (KEEP_HISTORY && !HISTORY_EXCLUSIONS_ARR.includes(file.split('.')[0])) {
+
+                var dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
+                var hfile = `${DATA_HISTORY_DIR}${file}_${dt}.xml`;
+                fsp.writeFile(hfile, 'utf8')
+                    .catch(e => error(`Unable to save ${hfile} - ${e}`));
+            }
+        }
+        const readIFile = (file) => fsp.readFile(DATA_DIR + file, 'utf8');
 
         const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: FORWARD_INTERVAL });
         const server = express();
@@ -127,9 +146,10 @@ class Infinium {
 
         //Updaters
         infinium.updateStatus = function (newStatus, loading = false) {
-            var process = function (xmlNewStatus, jsonNewStatus) {
-                var processJson = function (err, jsonNewStatus) {
-                    if (!err) {
+            const process = (xmlNewStatus, jsonNewStatus) => {
+                return new Promise((resolve, reject) => {
+
+                    const processJson = async (jsonNewStatus) => {
                         infinium.status = jsonNewStatus;
 
                         const status = utils.adjustIds(infinium.status, true);
@@ -139,73 +159,92 @@ class Infinium {
                         if (infinium.ws) {
                             infinium.ws.broadcast(WS_STATUS, status.status);
                         }
+
+                        resolve(loading ? 'Status Loaded' : infinium.status);
+                    };
+
+                    infinium.xmlStatus = xmlNewStatus;
+
+                    if (!loading) {
+                        writeIFile(STATUS_XML, infinium.xmlStatus);
                     }
-                };
 
-                if (jsonNewStatus) {
-                    processJson(null, jsonNewStatus);
-                } else {
-                    parseXml2Json(xmlNewStatus, processJson);
-                }
-
-                infinium.xmlStatus = xmlNewStatus;
-
-                if (!loading) {
-                    try {
-                        fs.writeFileSync(STATUS_XML, infinium.xmlStatus);
-                    } catch (e) {
-                        error(`Unable to save status.xml ${e}`);
-                    }
-                }
+                    (jsonNewStatus) ?
+                        processJson(jsonNewStatus) :
+                        parseXml2JsonPromise(xmlNewStatus)
+                            .then(jsonNewStatus => processJson(jsonNewStatus))
+                            .catch(err => reject(err));
+                });
             };
 
-            if (typeof newStatus === 'string') {
-                process(newStatus)
-            } else {
-                process(xmlBuilder.buildObject(newStatus), newStatus);
+            const processXml = (newStatus) => {
+                return new Promise((resolve, reject) => {
+                    buildXmlPromise(newStatus)
+                        .then(xmlStatus => {
+                            resolve(process(xmlStatus, newStatus));
+                        })
+                        .catch(e => {
+                            reject(e);
+                        })
+                });
             }
+
+            return (typeof newStatus === 'string') ?
+                process(newStatus) :
+                processXml(newStatus);
         }
 
         infinium.updateSystem = function (newSystem, loading = false) {
-            var process = function (xmlNewSystem, jsonNewSystem) {
-                var processJson = function (err, jsonNewSystem) {
-                    if (!err) {
+            const process = (xmlNewSystem, jsonNewSystem) => {
+                return new Promise((resolve, reject) => {
+
+                    const processJson = async (jsonNewSystem) => {
                         infinium.system = jsonNewSystem;
 
-                        infinium.updateConfig(utils.clone(infinium.system.system));
-                    } else {
-                        error(err);
+                        if (!loading) {
+                            infinium.updateConfig(utils.clone(infinium.system.system));
+                            resolve(infinium.system);
+                        } else {
+                            resolve('System Loaded');
+                        }
+                    };
+
+                    infinium.xmlSystem = xmlNewSystem;
+
+                    if (!loading) {
+                        writeIFile(SYSTEM_XML, infinium.xmlSystem)
                     }
-                };
 
-                if (jsonNewSystem) {
-                    processJson(null, jsonNewSystem);
-                } else {
-                    parseXml2Json(xmlNewSystem, processJson);
-                }
-
-                infinium.xmlSystem = xmlNewSystem;
-
-                if (!loading) {
-                    try {
-                        fs.writeFileSync(SYSTEM_XML, infinium.xmlSystem);
-                    } catch (e) {
-                        error(`Unable to save system.xml ${e}`);
-                    }
-                }
+                    (jsonNewSystem) ?
+                        processJson(jsonNewSystem) :
+                        parseXml2JsonPromise(xmlNewSystem)
+                            .then(jsonNewSystem => processJson(jsonNewSystem))
+                            .catch(err => reject(err));
+                });
             };
 
-            if (typeof newSystem === 'string') {
-                process(newSystem);
-            } else {
-                process(xmlBuilder.buildObject(newSystem), newSystem);
+            const processXml = (newSystem) => {
+                return new Promise((resolve, reject) => {
+                    buildXmlPromise(newSystem)
+                        .then(xmlSystem => {
+                            resolve(process(xmlSystem, newSystem));
+                        })
+                        .catch(e => {
+                            reject(e);
+                        })
+                });
             }
+
+            return (typeof newSystem === 'string') ?
+                process(newSystem) :
+                processXml(newSystem);
         }
 
-        infinium.updateConfig = function (newConfig, fromCarrier = false, loading = false) {
-            var process = function (xmlNewConfig, jsonNewConfig) {
-                var processJson = function (err, jsonNewConfig) {
-                    if (!err) {
+        infinium.updateConfig = function (newConfig, loading = false, fromCarrier = false) {
+            const process = (xmlNewConfig, jsonNewConfig) => {
+                return new Promise((resolve, reject) => {
+
+                    const processJson = async (jsonNewConfig) => {
                         infinium.config = jsonNewConfig;
 
                         const config = utils.adjustIds(infinium.config, true);
@@ -215,64 +254,70 @@ class Infinium {
                         if (infinium.ws) {
                             infinium.ws.broadcast(WS_CONFIG, config.config);
                         }
-                    } else {
-                        error(err);
+
+                        resolve(loading ? 'Config Loaded' : infinium.config);
+                    };
+
+                    infinium.xmlConfig = xmlNewConfig;
+
+                    if (!loading) {
+                        writeIFile(CONFIG_XML, infinium.xmlConfig);
                     }
-                };
 
-                if (jsonNewConfig) {
-                    processJson(null, jsonNewConfig);
-                } else {
-                    parseXml2Json(xmlNewConfig, processJson);
-                }
-
-                infinium.xmlConfig = xmlNewConfig;
-
-                if (!loading) {
-                    try {
-                        fs.writeFileSync(CONFIG_XML, infinium.xmlConfig);
-                    } catch (e) {
-                        error(U`nable to save config.xml ${e}`);
-                    }
-                }
+                    (jsonNewConfig) ?
+                        processJson(jsonNewConfig) :
+                        parseXml2JsonPromise(xmlNewConfig)
+                            .then(jsonNewConfig => processJson(jsonNewConfig))
+                            .catch(err => reject(err));
+                });
             };
+
+            const processXml = (newConfig) => {
+                return new Promise((resolve, reject) => {
+                    buildXmlPromise(newConfig)
+                        .then(xmlConfig => {
+                            resolve(process(xmlConfig, newConfig));
+                        })
+                        .catch(e => {
+                            reject(e);
+                        })
+                });
+            }
 
             if (typeof newConfig === 'string') {
                 if (fromCarrier && !changes) {
-                    parseXml2Json(newConfig, (err, jsonNewConfig) => {
-                        if (!err) {
+                    parseXml2JsonPromise(newConfig)
+                        .then(jsonNewConfig => {
                             if (jsonNewConfig.status.serverHasChanges === 'true') {
                                 infinium.changes = true;
                                 jsonNewConfig.status.pingRate = 12;
                                 infinium.sendStatusToCarrier = new Date().getTime() + (2 * 60 * 1000);
 
-                                xmlNewConfig = xmlBuilder.buildObject(jsonNewConfig);
-
-                                process(xmlNewConfig, jsonNewConfig);
+                                return processXml(newConfig);
                             } else {
-                                process(newConfig);
+                                return process(newConfig);
                             }
-                        } else {
-                            error(err);
-                        }
-                    });
+                        })
+                        .catch(err => reject(err));
                 } else {
-                    process(newConfig);
+                    return process(newConfig);
                 }
             } else {
-                if (newConfig.$) {
-                    newConfig.config.$ = newConfig.$;
-                    delete newConfig.$;
-                }
-                process(xmlBuilder.buildObject(newConfig), newConfig);
+                return processXml(newConfig);
             }
         }
 
         infinium.applySystemChanges = function (system) {
-            infinium.updateSystem(system);
-            infinium.changes = true;
-            debug('Applied Changes to System');
+            return new Promise((resolve, reject) => {
+                infinium.updateSystem(system)
+                    .then(_ => {
+                        infinium.changes = true;
+                        resolve('Applied Changes to System');
+                    })
+                    .catch(e => reject(e));
+            });
         }
+
 
         //Express Start/Stop
         infinium.startServer = function () {
@@ -286,7 +331,7 @@ class Infinium {
                         debug(`Remote API is Enabled`, true, true);
                     }
 
-                    if (KEEP_OTHER_HISTORY) {
+                    if (KEEP_HISTORY) {
                         debug(`Keep Other History Enabled '${DATA_HISTORY_DIR}'`, true, true);
                     }
 
@@ -306,26 +351,20 @@ class Infinium {
 
 
         //Load configs if available
-        fs.readFile(CONFIG_XML, 'utf8', (err, data) => {
-            if (!err) {
-                debug('Config Loaded');
-                infinium.updateConfig(data, false, true);
-            }
-        });
+        readIFile(CONFIG_XML)
+            .then(data => infinium.updateConfig(data, true))
+            .then(msg => debug(msg))
+            .catch(e => warn(e));
 
-        fs.readFile(SYSTEM_XML, 'utf8', (err, data) => {
-            if (!err) {
-                debug('System Loaded');
-                infinium.updateSystem(data, true);
-            }
-        });
+        readIFile(SYSTEM_XML)
+            .then(data => infinium.updateSystem(data, true))
+            .then(msg => debug(msg))
+            .catch(e => warn(e));
 
-        fs.readFile(STATUS_XML, 'utf8', (err, data) => {
-            if (!err) {
-                debug('Status Loaded');
-                infinium.updateStatus(data, true);
-            }
-        });
+        readIFile(STATUS_XML)
+            .then(data => infinium.updateStatus(data, true))
+            .then(msg => debug(msg))
+            .catch(e => warn(e));
 
 
         //server 
@@ -342,47 +381,43 @@ class Infinium {
         /* Thermostat Requests */
         server.get('/Alive', (req, res) => {
             debug('Sending Alive');
-
             res.send('alive');
         });
 
         server.get('/time', (req, res) => {
             debug('Sending Time');
-
-            var xml = xmlBuilder.buildObject({
+            res.send(xmlBuilder.buildObject({
                 time: {
                     $: {
                         "version": "1.9"
                     },
                     utc: new Date().toISOString()
                 }
-            });
-
-            res.send(xml);
+            }));
         });
 
 
         //Thermostat retreiving manifest
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
-            cache.get({ request: utils.copyRequest(req), fileName: MANIFEST_XML }, (err, data, fromWeb) => {
-                if (!err) {
-                    res.send(data);
+            cache.get({ request: utils.copyRequest(req), fileName: DATA + 'manifest' })
+                .then(cres => {
                     debug('Sending Manifest');
+                    res.send(cres.data);
 
-                    parseXml2Json(data, (err, obj) => {
-                        if (!err) {
+                    parseXml2JsonPromise(cres.data)
+                        .then(obj => {
                             infinium.eventEmitter.emit('manifest', obj);
                             infinium.eventEmitter.emit('update', 'manifest', obj);
-                        } else {
-                            error(err);
-                        }
-                    });
-                } else {
-                    res.send('');
+                        })
+                        .catch(e => {
+                            error(e);
+                        });
+                })
+                .catch(e => {
                     warnRetCar('Manifest', err);
-                }
-            });
+                    res.send('');
+                });
         });
 
         //Thermostat retreiving release notes
@@ -396,17 +431,16 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
-                if (!err) {
-                    infinium.eventEmitter.emit('release_notes', data);
-                    infinium.eventEmitter.emit('update', 'release_notes', data);
-                } else {
-                    warnRetCar('Release Notes', err);
-                }
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName })
+                .then(cres => {
+                    debug('Sending Release Notes');
+                    res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
 
-                debug('Sending Release Notes');
-                res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
-            });
+                    infinium.eventEmitter.emit('release_notes', cres.data);
+                    infinium.eventEmitter.emit('update', 'release_notes', cres.data);
+
+                })
+                .catch(e => warnRetCar('Release Notes', e));
         });
 
         //Thermostat retreiving firmware
@@ -420,29 +454,26 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName }, (err, data, fromWeb) => {
-                if (err) {
-                    warnRetCar('System Firmware', err);
-                }
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName })
+                .then(cres => {
+                    var notice = {
+                        notice: 'System is trying to update itself. Check manifest for details',
+                        url: utils.buildUrlFromRequest(req),
+                        fileName: fileName
+                    }
 
-                var notice = {
-                    notice: 'System is trying to update itself. Check manifest for details',
-                    url: utils.buildUrlFromRequest(req),
-                    fileName: fileName
-                }
+                    infinium.eventEmitter.emit('system_update', notice);
+                    infinium.eventEmitter.emit('update', 'system_update', notice);
 
-                infinium.eventEmitter.emit('system_update', notice);
-                infinium.eventEmitter.emit('update', 'system_update', notice);
-
-                if (infinium.ws) {
-                    infinium.ws.broadcast(WS_UPDATE, {
-                        id: 'system_update',
-                        data: notice
-                    });
-                }
-
-                res.send('');
-            });
+                    if (infinium.ws) {
+                        infinium.ws.broadcast(WS_UPDATE, {
+                            id: 'system_update',
+                            data: notice
+                        });
+                    }
+                })
+                .catch(e => warnRetCar('System Firmware', e))
+                .finally(() => res.send(''));
         });
 
 
@@ -455,36 +486,45 @@ class Infinium {
                 this.changes = false;
             } else if (infinium.xmlSystem) {
                 debug('Sending config from system.xml');
-                var newXmlConfig = xmlBuilder.buildObject({
+                buildXmlPromise({
                     config: infinium.system.system.config
-                });
-                res.send(newXmlConfig);
-                this.changes = false;
+                })
+                    .then(xml => {
+                        res.send(xml);
+                        this.changes = false;
+                    })
+                    .catch(e => {
+                        res.send('');
+                        error(`Failed to build config from systems - ${e}`)
+                    });
             } else {
                 sendFromCarrier = true;
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: CONFIG_XML, refresh: sendFromCarrier, forwardInterval: 3600000 }, (err, data, fromWeb) => {
-                debug('Retreiving Config');
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + CONFIG_XML, refresh: sendFromCarrier, forwardInterval: 3600000 })
+                .then(cres => {
+                    debug('Retreiving Config');
 
-                if (!err) {
-                    infinium.updateConfig(data, true);
-                } else {
-                    warnRetCar('Config', err);
-                }
-
-                if (sendFromCarrier) {
-                    res.send(infinium.xmlConfig ? infinium.xmlConfig : '');
-                    this.changes = false;
-                }
-            });
+                    infinium.updateConfig(cres.data, false, true).then(config => {
+                        if (sendFromCarrier) {
+                            res.send(config ? config : '');
+                            this.changes = false;
+                        }
+                    });
+                })
+                .catch(e => {
+                    if (sendFromCarrier) {
+                        res.send('');
+                    }
+                    warnRetCar('Config', e);
+                });
         });
 
         //Thermostat requesting system
         server.get('/systems/:id', (req, res) => {
-            if (xmlSystem) {
+            if (infinium.xmlSystem) {
                 debug('Sending system.xml');
-                res.send(xmlSystem);
+                res.send(infinium.xmlSystem);
             } else {
                 debug('system.xml not found');
                 res.send('');
@@ -494,16 +534,15 @@ class Infinium {
         //Thermostat reporting system
         server.post('/systems/:id', (req, res) => {
             debug('Receiving system.xml');
+            res.send('');
 
             if (req.body.data) {
-                infinium.updateSystem(req.body.data);
+                infinium.updateSystem(req.body.data)
+                    .catch(e => error(e));
             }
 
-            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
-                warnRetCar('System Response', err);
-            });
-
-            res.send('');
+            cache.get(utils.copyRequest(req))
+                .catch(e => warnRetCar('System Response', e));
         });
 
         //Thermostat reporting status
@@ -511,42 +550,54 @@ class Infinium {
             debug('Receiving status.xml');
 
             if (req.body.data) {
-                infinium.updateStatus(req.body.data);
+                infinium.updateStatus(req.body.data)
+                    .catch(e => error(e));
             }
 
-            var buildResponse = function () {
-                return xmlBuilder.buildObject({
-                    status: {
-                        $: '1.37',
-                        configHasChanges: infinium.changes ? 'true' : 'false',
-                        serverHasChanges: infinium.changes ? 'true' : 'false',
-                        pingRate: infinium.changes ? 20 : 12
-                    }
-                });
+            var buildResponse = () => {
+                try {
+                    return xmlBuilder.buildObject({
+                        status: {
+                            $: '1.37',
+                            configHasChanges: infinium.changes ? 'true' : 'false',
+                            serverHasChanges: infinium.changes ? 'true' : 'false',
+                            pingRate: infinium.changes ? 20 : 12
+                        }
+                    });
+                } catch (e) {
+                    error(`Error building status response - ${e}`);
+                    return '';
+                }
             }
 
             if (infinium.sendStatusToCarrier && new Date().getTime() > infinium.sendStatusToCarrier) {
-                cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
-                    if (!err) {
-                        parseXml2Json(data, (err, obj) => {
-                            if (!err) {
+                cache.get(utils.copyRequest(req))
+                    .then(cres => {
+                        parseXml2JsonPromise(cres.data)
+                            .then(obj => {
                                 var changes = obj.status.serverHasChanges === 'true';
                                 obj.status.pingRate = changes ? 20 : 12;
-                                data = xmlBuilder.buildObject(obj);
-                                res.send(data);
-                                debug('Received and Forwared Status Response from Carrier');
-                            } else {
-                                res.send(buildResponse());
+
+                                buildXmlPromise(obj)
+                                    .then(xml => {
+                                        res.send(xml);
+                                        debug('Received and Forwared Status Response from Carrier');
+                                    })
+                                    .catch(e => {
+                                        res.send('');
+                                        error(`Error building status response - ${e}`);
+                                    });
+                            })
+                            .catch(e => {
                                 error('Received Status Response from Carrier but it Failed to parse.');
-                                debug(`Sent Status Response - Changes: ${infinium.changes}`);
-                            }
-                        })
+
+                                res.send(buildResponse());
+                                debug(`Sending Status Response - Changes: ${infinium.changes}`);
+                            });
 
                         infinium.sendStatusToCarrier = null;
-                    } else {
-                        warnRetCar('Status Reponse', err);
-                    }
-                });
+                    })
+                    .catch(e => warnRetCar('Status Reponse', e));
             } else {
                 res.send(buildResponse());
                 debug(`Sending Status Response - Changes: ${infinium.changes.toString()}`);
@@ -558,14 +609,14 @@ class Infinium {
         server.get('/systems/:system_id/:key', (req, res) => {
             debug(`Retreiving ${req.params.key} from: ${utils.buildUrlFromRequest(req)}`)
 
-            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}_res.xml`, forwardInterval: 0 }, (err, data, fromWeb) => {
-                if (!err) {
-                    res.send(data);
+            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, forwardInterval: 0 })
+                .then(cres => {
                     debug(`Sending Carrier Response to: [GET] ${req.path}`)
+                    res.send(cres.data);
 
-                    if (fromWeb) {
-                        parseXml2Json(data, (err, obj) => {
-                            if (!err) {
+                    if (cres.fromWeb) {
+                        parseXml2JsonPromise(cres.data)
+                            .then(obj => {
                                 var data = utils.adjustIds(obj);
 
                                 infinium.eventEmitter.emit(key, data);
@@ -579,16 +630,14 @@ class Infinium {
                                         response: true
                                     });
                                 }
-                            } else {
-                                error(`Failed to parse: [GET] ${key}`);
-                            }
-                        });
+                            })
+                            .catch(e => error(`Failed to parse: [GET] ${key} - ${e}`))
                     }
-                } else {
+                })
+                .catch(e => {
                     res.send('');
-                    warnRetCar(`[GET] ${req.path}`, err);
-                }
-            });
+                    warnRetCar(`[GET] ${req.path}`, e);
+                });
         });
 
         //Thermostat reporting other data
@@ -597,8 +646,8 @@ class Infinium {
             debug(`Receiving ${key}.xml`);
 
             if (req.body.data) {
-                parseXml2Json(req.body.data, (err, obj) => {
-                    if (!err) {
+                parseXml2JsonPromise(req.body.data)
+                    .then(obj => {
                         var data = utils.adjustIds(obj);
 
                         infinium.eventEmitter.emit(key, data);
@@ -611,32 +660,22 @@ class Infinium {
                                 data: data
                             });
                         }
-                    } else {
-                        error(`Failed to parse: ${key}`);
-                    }
-                });
+                    })
+                    .catch(e => error(`Failed to parse: ${key} - ${e}`));
 
-                try {
-                    fs.writeFileSync(`${DATA_DIR}${key}.xml`, req.body.data);
 
-                    if (KEEP_OTHER_HISTORY) {
-                        var dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
-                        fs.writeFileSync(`${DATA_HISTORY_DIR}${key}_${dt}.xml`, req.body.data);
-                    }
-                } catch (e) {
-                    error(`Unable to save ${key}.xml ${e}`);
-                }
+                writeIFile(`${key}.xml`, req.body.data);
             }
 
-            cache.get(utils.copyRequest(req), (err, data, fromWeb) => {
-                if (!err) {
-                    res.send(data);
+            cache.get(utils.copyRequest(req))
+                .then(cres => {
                     debug(`Sending Carrier Response to: [POST] ${req.path}`)
-                } else {
+                    res.send(cres.data);
+                })
+                .catch(e => {
                     res.send('');
-                    warnRetCar(`(${key}) Response`, err);
-                }
-            });
+                    warnRetCar(`(${key}) Response`, e);
+                });
         });
 
 
@@ -644,48 +683,57 @@ class Infinium {
         server.get('/weather/:zip/forecast', (req, res) => {
             var now = new Date().getTime();
 
+            const sendCachedWeather = res.send(infinium.xmlWeather ? infinium.xmlWeather : '');
+
+            const updateWeather = async (xmlWeather) => {
+                infinium.xmlWeather = xmlWeather;
+                infinium.lastWeatherUpdate = now;
+
+                writeIFile('weather', xmlWeather);
+
+                parseXml2JsonPromise(xmlWeather)
+                    .then(obj => {
+                        var data = utils.adjustIds(obj);
+
+                        infinium.eventEmitter.emit('weather', data);
+                        infinium.eventEmitter.emit('update', 'weather', data);
+
+                        if (infinium.ws) {
+                            infinium.ws.broadcast(`/ws/weather`, data);
+                            infinium.ws.broadcast(WS_UPDATE, {
+                                id: 'weather',
+                                data: data,
+                                response: true
+                            });
+                        }
+                    })
+                    .catch(e => error(`Failed to parse: weather - ${e}`));
+            };
+
             if (!infinium.lastWeatherUpdate || ((now - infinium.lastWeatherUpdate) > WEATHER_REFRESH_RATE)) {
                 debug(`Retreiving Weather Data from ${infinium.weatherProvider.getName()}`)
-                infinium.weatherProvider.getWeather(utils.copyRequest(req), (err, xmlWeather) => {
-                    if (!err) {
-                        res.send(xmlWeather);
-                        infinium.xmlWeather = xmlWeather;
-                        infinium.lastWeatherUpdate = now;
-                        debug(`Sending Weather Data from ${infinium.weatherProvider.getName()}`);
 
-                        try {
-                            fs.writeFileSync(WEATHER_XML, xmlWeather);
-                        } catch (e) {
-                            error(`Unable to save weather.xml ${e}`);
-                        }
+                const weather = infinium.weatherProvider.getWeather(utils.copyRequest(req));
 
-                        parseXml2Json(xmlWeather, (err, obj) => {
-                            if (!err) {
-                                var data = utils.adjustIds(obj);
-
-                                infinium.eventEmitter.emit('weather', data);
-                                infinium.eventEmitter.emit('update', 'weather', data);
-
-                                if (infinium.ws) {
-                                    infinium.ws.broadcast(`/ws/weather`, data);
-                                    infinium.ws.broadcast(WS_UPDATE, {
-                                        id: 'weather',
-                                        data: data,
-                                        response: true
-                                    });
-                                }
-                            } else {
-                                error(`Failed to parse: weather`);
-                            }
+                if (weather instanceof Promise) {
+                    weather
+                        .then(xmlWeather => {
+                            res.send(xmlWeather);
+                            updateWeather(xmlWeather)
+                        })
+                        .catch(e => {
+                            error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${e}`);
                         });
-                    } else {
-                        res.send('');
-                        error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${err}`);
-                    }
-                });
+                } else if (typeof weather === 'string') {
+                    res.send(weather);
+                    updateWeather(weather);
+                } else {
+                    error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${err}`);
+                    sendCachedWeather();
+                }
             } else if (infinium.xmlWeather) {
-                res.send(infinium.xmlWeather);
                 debug(`Sending Cached Weather Data from ${infinium.weatherProvider.getName()}`);
+                sendCachedWeather();
             }
         });
 
@@ -702,7 +750,7 @@ class Infinium {
         if (API_ENABLED) {
             //Get System Status
             server.get('/api/status', (req, res) => {
-                res.send(infinium.status ? utils.adjustIds(infinium.status.status) : '');
+                res.send(infinium.status ? utils.adjustIds(infinium.status.status) : 'Status Not Available');
             });
 
             //Get activity of a Zone
@@ -712,16 +760,17 @@ class Infinium {
                     res.send('Invalid Zone');
                 } else if (!Activities.All.includes(req.params.activity.toLowerCase())) {
                     res.send('Invalid Activity');
+                } else if (!infinium.system) {
+                    res.send('System not ready');
                 } else {
-                    var activity = utils.getActivity(this.system, zone, req.params.activity);
+                    var activity = utils.getActivity(infinium.system, zone, req.params.activity);
 
                     if (activity) {
                         res.json(utils.adjustIds(activity));
                     } else {
-                        res.send('');
+                        res.send('Actvity not Found');
                     }
                 }
-
             });
 
             //Get activity of a Zone
@@ -731,13 +780,15 @@ class Infinium {
                     res.send('Invalid Zone');
                 } else if (!utils.validateDay(req.params.day)) {
                     res.send('Invalid Day');
+                } else if (!infinium.system) {
+                    res.send('System not ready');
                 } else {
                     var schedule = utils.getDay(utils.getZone(infinium.system, zone).program, req.params.day);
 
                     if (schedule) {
                         res.json(utils.adjustIds(schedule, true));
                     } else {
-                        res.send('');
+                        res.send('Schedule not found');
                     }
                 }
 
@@ -748,16 +799,17 @@ class Infinium {
                 var zone;
                 if (!(zone = utils.validateZone(req.params.zone))) {
                     res.send('Invalid Zone');
+                } else if (!infinium.system) {
+                    res.send('System not ready');
                 } else {
                     var schedule = utils.getDay(utils.getZone(infinium.system, zone)).program;
 
                     if (schedule) {
                         res.json(utils.adjustIds(schedule, true));
                     } else {
-                        res.send('');
+                        res.send('Schedule not found');
                     }
                 }
-
             });
 
             //Get all data for a Zone
@@ -765,13 +817,15 @@ class Infinium {
                 var zone;
                 if (!(zone = utils.validateZone(req.params.zone))) {
                     res.send('Invalid Zone');
+                } else if (!infinium.system) {
+                    res.send('System not ready');
                 } else {
                     var zone = utils.adjustIds(utils.getZone(this.system, zone));
 
                     if (zone) {
                         res.json(utils.adjustIds(zone, true));
                     } else {
-                        res.send('');
+                        res.send('Zone not found');
                     }
                 }
 
@@ -785,15 +839,13 @@ class Infinium {
                     this.setActivity(req.params.zone, req.params.activity,
                         req.body.clsp || null,
                         req.body.htsp || null,
-                        req.body.fan || null,
-                        (err, activity) => {
-                            if (err) {
-                                res.send(err);
-                                warn(err);
-                            } else {
-                                debug(`Activity has been set from: ${req.connection.remoteAddress}`)
-                                res.send('sucess');
-                            }
+                        req.body.fan || null)
+                        .then(activity => {
+                            debug(`Activity has been set from: ${req.connection.remoteAddress}`)
+                            res.send(activity);
+                        })
+                        .catch(e => {
+                            res.send(e);
                         });
                 } else {
                     res.send('Invalid Parameters');
@@ -807,15 +859,13 @@ class Infinium {
                     const holdUntil = req.body.holdUntil || null;
 
                     this.setHold(req.params.zone, req.body.hold || true,
-                        activity, holdUntil,
-                        (err, zone) => {
-                            if (err) {
-                                res.send(err);
-                                warn(err);
-                            } else {
-                                debug(`Hold has been set from: ${req.connection.remoteAddress}`);
-                                res.send('sucess');
-                            }
+                        activity, holdUntil)
+                        .then(zone => {
+                            debug(`Hold has been set from: ${req.connection.remoteAddress}`);
+                            res.send(zone);
+                        })
+                        .catch(e => {
+                            res.send(e);
                         });
                 } else {
                     res.send('Invalid Parameters');
@@ -846,7 +896,7 @@ class Infinium {
             infinium.ws = {};
             infinium.ws.server = expressWS(server);
 
-            infinium.ws.broadcast = function (path, data) {
+            infinium.ws.broadcast = async (path, data) => {
                 try {
                     var clients = infinium.ws.server.getWss().clients
 
@@ -919,7 +969,7 @@ class Infinium {
             });
         }
 
-        if (KEEP_OTHER_HISTORY && !fs.existsSync(DATA_HISTORY_DIR)) {
+        if (KEEP_HISTORY && !fs.existsSync(DATA_HISTORY_DIR)) {
             try {
                 fs.mkdirSync(DATA_HISTORY_DIR, { recursive: true });
             } catch (e) {
@@ -1001,237 +1051,250 @@ class Infinium {
     }
 
 
-    setHold(zone, hold = true, activity = 'home', holdUntil = null, callback) {
-        if (this.system) {
-            var czone;
-            if (czone = utils.validateZone(zone)) {
-                if (typeof hold === 'boolean' || hold === 'on' || hold === 'off') {
-                    if (Activities.All.includes(activity)) {
-                        if (utils.validateTime(holdUntil)) {
-                            var system = utils.clone(this.system);
-                            var szone = utils.getZone(system, czone);
+    setHold(zone, hold = true, activity = 'home', holdUntil = null) {
+        const infinium = this;
+        return new Promise((resolve, reject) => {
+            if (infinium.system) {
+                var czone;
+                if (czone = utils.validateZone(zone)) {
+                    if (typeof hold === 'boolean' || hold === 'on' || hold === 'off') {
+                        if (Activities.All.includes(activity)) {
+                            if (utils.validateTime(holdUntil)) {
+                                var system = utils.clone(infinium.system);
+                                var szone = utils.getZone(system, czone);
 
-                            if (szone) {
-                                szone.hold = ((typeof hold === 'boolean') ? (hold === true ? 'on' : 'off') : hold);
-                                szone.holdActivity = activity;
-                                szone.otmr = (holdUntil) ? holdUntil : '';
+                                if (szone) {
+                                    szone.hold = ((typeof hold === 'boolean') ? (hold === true ? 'on' : 'off') : hold);
+                                    szone.holdActivity = activity;
+                                    szone.otmr = (holdUntil) ? holdUntil : '';
 
-                                this.applySystemChanges(system);
-                                this.log.debug(`Hold Set (${
-                                    czone
-                                    },${
-                                    activity
-                                    },${
-                                    szone.hold
-                                    },${
-                                    holdUntil ? holdUntil : '*'
-                                    })`, true, true);
+                                    infinium.applySystemChanges(system)
+                                        .then(result => {
+                                            infinium.log.debug(`Hold Set (${
+                                                czone
+                                                },${
+                                                activity
+                                                },${
+                                                szone.hold
+                                                },${
+                                                holdUntil ? holdUntil : '*'
+                                                })`, true, true);
 
-                                if (callback)
-                                    callback(null, utils.adjustIds(szone));
-                            } else if (callback) {
-                                callback('Can not find zone in config');
-                            }
-                        } else if (callback) {
-                            callback(`Invalid Hold Until Value: ${holdUntil}`);
-                        }
-                    } else if (callback) {
-                        callback(`Invalid Activity Value: ${activity}`);
-                    }
-                } else if (callback) {
-                    callback(`Invalid Hold Value: ${hold}`);
-                }
-            } else if (callback) {
-                callback(`Invalid Zone: ${zone}`);
-            }
-        } else if (callback) {
-            callback('System not ready.');
-        }
-    }
-
-    setActivity(zone, activity, clsp = null, htsp = null, fan = null, callback) {
-        if (this.system) {
-            const system = utils.clone(this.system);
-            var czone, cclsp, chtsp;
-
-            if (czone = utils.validateZone(zone)) {
-                if (Activities.All.includes(activity)) {
-                    if ((cclsp = utils.validateTemp(clsp, system.system.config.vacmint, system.system.config.vacmaxt)) !== 0) {
-                        if ((chtsp = utils.validateTemp(htsp, system.system.config.vacmint, system.system.config.vacmaxt)) !== 0) {
-                            if (fan === null || FanModes.All.includes(fan)) {
-                                activity = utils.getActivity(system, czone, activity);
-
-                                if (activity) {
-                                    if (cclsp !== null) {
-                                        activity.clsp = cclsp.toFixed(1);
-                                    }
-
-                                    if (chtsp !== null) {
-                                        activity.htsp = chtsp.toFixed(1);
-                                    }
-
-                                    if (fan !== null) {
-                                        activity.fan = fan;
-                                    }
-
-                                    this.applySystemChanges(system);
-
-                                    this.log.debug(`Activity Set (${czone},${activity}:${
-                                        cclsp ? cclsp : '*'
-                                        },${
-                                        chtsp ? chtsp : '*'
-                                        },${
-                                        fan ? fan : '*'
-                                        })`, true, true);
-
-                                    if (callback)
-                                        callback(null, utils.adjustIds(activity));
-                                } else if (callback) {
-                                    callback('Can not find activity in config');
+                                            resolve(utils.adjustIds(szone));
+                                        })
+                                        .catch(e => {
+                                            error(`Error making changes to System - ${e}`);
+                                            reject('Error making changes to System');
+                                        });
+                                } else {
+                                    reject('Can not find zone in config');
                                 }
-                            } else if (callback) {
-                                callback(`Invalid Fan Mode: ${fan}`);
-                            }
-                        } else if (callback) {
-                            callback(`Invalid Heating Setpoint: ${htsp}`);
-                        }
-                    } else if (callback) {
-                        callback(`Invalid Cooling Setpoint: ${clsp}`);
-                    }
-                } else if (callback) {
-                    callback(`Invalid Avtivity Value: ${activity}`);
-                }
-            } else if (callback) {
-                callback(`Invalid Zone: ${zone}`);
-            }
-        } else if (callback) {
-            callback('System not ready.');
-        }
-    }
-
-    setSchedule(zone, schedule, callback) {
-        var newSchedule, error;
-
-        const processPeriod = function (currPeriod, newPeriod) {
-            if (newPeriod.activity !== undefined) {
-                if (Activities.All.includes(newPeriod.activity)) {
-                    currPeriod.activity = newPeriod.activity;
-                } else {
-                    error = `Invalid Activity: ${newPeriod.activity}`;
-                    return false;
-                }
-            }
-
-            if (newPeriod.time !== undefined) {
-                if (utils.validateTime(newPeriod.time)) {
-                    currPeriod.time = newPeriod.time;
-                } else {
-                    error = `Invalid Time: ${newPeriod.time}`;
-                    return false;
-                }
-            }
-
-            const enable = (newPeriod.enable !== undefined ? newPeriod.enable : (newPeriod.enabled !== undefined ? newPeriod.enabled : undefined));
-            if (enable !== undefined) {
-                if (typeof enable === 'boolean' || enable === 'on' || enable === 'off') {
-                    currPeriod.enabled = ((typeof enable === 'boolean') ? (enable === true ? 'on' : 'off') : enable);
-
-                    if (currPeriod.enabled === 'off') {
-                        currPeriod.time = '00:00';
-                    }
-                } else {
-                    error = `Invalid Enabled Value: ${enable}`;
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        const processDay = function (program, newDay) {
-            const currDay = utils.getDay(program, newDay.id);
-
-            if (currDay && Array.isArray(currDay.period)) {
-                if (Array.isArray(newDay.periods)) {
-                    newDay.periods.forEach(np => {
-                        var npid;
-                        if ((npid = utils.validatePeriod(np.id))) {
-                            if (!processPeriod(utils.getPeriod(currDay, npid.toString()), np)) {
-                                return false;
+                            } else {
+                                reject(`Invalid Hold Until Value: ${holdUntil}`);
                             }
                         } else {
-                            error = `Invalid Period: ${np.id}`;
+                            callback(`Invalid Activity Value: ${activity}`);
                         }
-                    });
-
-                    var currPeriod, prevPeriod = utils.getPeriod(currDay, '1')
-                    for (var i = 2; i < 6; i++) {
-                        currPeriod = utils.getPeriod(currDay, i.toString());
-
-                        if (prevPeriod.enabled === 'on') {
-                            var prevTime = parseInt(prevPeriod.time.replace(/:/, ''));
-
-                            if (currPeriod.enabled === 'on') {
-                                var currTime = parseInt(currPeriod.time.replace(/:/, ''));
-
-                                if (prevTime >= currTime) {
-                                    error = 'Each period must take place after the one before it.';
-                                    return false;
-                                }
-
-                                prevPeriod = currPeriod;
-                            }
-                        }
+                    } else {
+                        reject(`Invalid Hold Value: ${hold}`);
                     }
-
-                    return true;
                 } else {
-                    error = 'Could not find periods in newDay';
+                    reject(`Invalid Zone: ${zone}`);
                 }
             } else {
-                error = 'Could not find Day in config';
+                reject('System not ready.');
             }
+        });
+    }
 
-            return false;
-        }
+    setActivity(zone, activity, clsp = null, htsp = null, fan = null) {
+        const infinium = this;
 
-        if (Array.isArray(schedule)) {
-            newSchedule = schedule;
-        } else if (Array.isArray(schedule.schedule)) {
-            newSchedule = schedule.schedule;
-        } else if (callback) {
-            callback('Invalid Schedule');
-            return;
-        }
+        return new Promise((resolve, reject) => {
+            if (infinium.system) {
+                const system = utils.clone(infinium.system);
+                var czone, cclsp, chtsp;
 
-        var czone;
-        if (this.system) {
-            if ((czone = utils.validateZone(zone))) {
-                const system = utils.clone(this.system);
-                const program = utils.getZone(system, czone).program
+                if (czone = utils.validateZone(zone)) {
+                    if (Activities.All.includes(activity)) {
+                        if ((cclsp = utils.validateTemp(clsp, system.system.config.vacmint, system.system.config.vacmaxt)) !== 0) {
+                            if ((chtsp = utils.validateTemp(htsp, system.system.config.vacmint, system.system.config.vacmaxt)) !== 0) {
+                                if (fan === null || FanModes.All.includes(fan)) {
+                                    activity = utils.getActivity(system, czone, activity);
 
-                newSchedule.forEach(newDay => {
-                    if (utils.validateDay(newDay.id)) {
-                        if (!processDay(program, newDay) && callback) {
-                            callback(error)
-                            return;
+                                    if (activity) {
+                                        if (cclsp !== null) {
+                                            activity.clsp = cclsp.toFixed(1);
+                                        }
+
+                                        if (chtsp !== null) {
+                                            activity.htsp = chtsp.toFixed(1);
+                                        }
+
+                                        if (fan !== null) {
+                                            activity.fan = fan;
+                                        }
+
+                                        infinium.applySystemChanges(system)
+                                            .then(result => {
+                                                infinium.log.debug(`Activity Set (${czone},${activity}:${
+                                                    cclsp ? cclsp : '*'
+                                                    },${
+                                                    chtsp ? chtsp : '*'
+                                                    },${
+                                                    fan ? fan : '*'
+                                                    })`, true, true);
+
+                                                resolve(utils.adjustIds(activity));
+                                            })
+                                            .catch(e => {
+                                                error(`Error making changes to System - ${e}`);
+                                                reject('Error making changes to System');
+                                            });
+                                    } else {
+                                        reject('Can not find activity in config');
+                                    }
+                                } else {
+                                    reject(`Invalid Fan Mode: ${fan}`);
+                                }
+                            } else {
+                                reject(`Invalid Heating Setpoint: ${htsp}`);
+                            }
+                        } else {
+                            reject(`Invalid Cooling Setpoint: ${clsp}`);
                         }
-                    } else if (callback) {
-                        callback(`Invalid Day: ${newDay.id}`)
-                        return;
+                    } else {
+                        reject(`Invalid Avtivity Value: ${activity}`);
                     }
-                });
-
-                this.applySystemChanges(system);
-                this.log.debug(`Schedule for Zone ${czone} Updated`, true, true);
-
-                callback(null, utils.adjustIds(program));
-            } else if (callback) {
-                callback(`Invalid Zone: ${zone}`);
+                } else {
+                    reject(`Invalid Zone: ${zone}`);
+                }
+            } else {
+                reject('System not ready');
             }
-        } else if (callback) {
-            callback('System not ready.');
-        }
+        });
+    }
+
+    setSchedule(zone, schedule) {
+        const infinium = this;
+
+        return new Promise((resolve, reject) => {
+            var newSchedule;
+
+            const processPeriod = function (currPeriod, newPeriod) {
+                if (newPeriod.activity !== undefined) {
+                    if (Activities.All.includes(newPeriod.activity)) {
+                        currPeriod.activity = newPeriod.activity;
+                    } else {
+                        throw `Invalid Activity: ${newPeriod.activity}`;
+                    }
+                }
+
+                if (newPeriod.time !== undefined) {
+                    if (utils.validateTime(newPeriod.time)) {
+                        currPeriod.time = newPeriod.time;
+                    } else {
+                        throw `Invalid Time: ${newPeriod.time}`;
+                    }
+                }
+
+                const enable = (newPeriod.enable !== undefined ? newPeriod.enable : (newPeriod.enabled !== undefined ? newPeriod.enabled : undefined));
+                if (enable !== undefined) {
+                    if (typeof enable === 'boolean' || enable === 'on' || enable === 'off') {
+                        currPeriod.enabled = ((typeof enable === 'boolean') ? (enable === true ? 'on' : 'off') : enable);
+
+                        if (currPeriod.enabled === 'off') {
+                            currPeriod.time = '00:00';
+                        }
+                    } else {
+                        throw `Invalid Enabled Value: ${enable}`;
+                    }
+                }
+            }
+
+            const processDay = (program, newDay) => {
+                const currDay = utils.getDay(program, newDay.id);
+
+                if (currDay && Array.isArray(currDay.period)) {
+                    if (Array.isArray(newDay.periods)) {
+                        newDay.periods.forEach(np => {
+                            var npid;
+                            if ((npid = utils.validatePeriod(np.id))) {
+                                processPeriod(utils.getPeriod(currDay, npid.toString()), np);
+                            } else {
+                                throw `Invalid Period: ${np.id}`;
+                            }
+                        });
+
+                        var currPeriod, prevPeriod = utils.getPeriod(currDay, '1')
+                        for (var i = 2; i < 6; i++) {
+                            currPeriod = utils.getPeriod(currDay, i.toString());
+
+                            if (prevPeriod.enabled === 'on') {
+                                var prevTime = parseInt(prevPeriod.time.replace(/:/, ''));
+
+                                if (currPeriod.enabled === 'on') {
+                                    var currTime = parseInt(currPeriod.time.replace(/:/, ''));
+
+                                    if (prevTime >= currTime) {
+                                        throw 'Each period must take place after the one before it.';
+                                    }
+
+                                    prevPeriod = currPeriod;
+                                }
+                            }
+                        }
+                    } else {
+                        throw 'Could not find periods in newDay';
+                    }
+                } else {
+                    throw 'Could not find Day in config';
+                }
+            }
+
+            if (Array.isArray(schedule)) {
+                newSchedule = schedule;
+            } else if (Array.isArray(schedule.schedule)) {
+                newSchedule = schedule.schedule;
+            } else {
+                reject('Invalid Schedule');
+                return;
+            }
+
+            var czone;
+            if (infinium.system) {
+                if ((czone = utils.validateZone(zone))) {
+                    const system = utils.clone(infinium.system);
+                    const program = utils.getZone(system, czone).program
+
+                    try {
+                        newSchedule.forEach(newDay => {
+                            if (utils.validateDay(newDay.id)) {
+                                processDay(program, newDay);
+                            } else {
+                                throw `Invalid Day: ${newDay.id}`;
+                            }
+                        });
+
+                        infinium.applySystemChanges(system)
+                            .then(result => {
+                                infinium.log.debug(`Schedule for Zone ${czone} Updated`, true, true);
+                                resolve(utils.adjustIds(program));
+                            })
+                            .catch(e => {
+                                error(`Error making changes to System - ${e}`);
+                                reject('Error making changes to System');
+                            });
+                    } catch (e) {
+                        reject(e);
+                    }
+                } else {
+                    reject(`Invalid Zone: ${zone}`);
+                }
+            } else {
+                reject('System not ready.');
+            }
+        });
     }
 }
 

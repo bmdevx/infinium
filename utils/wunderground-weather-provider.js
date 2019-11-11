@@ -87,100 +87,104 @@ class WundergroundWeatherProvier extends WeatherProvider {
         this.wunderground = new WeatherUndergroundNode(config.apiKey);
     }
 
-    getWeather(req, callback) {
-        const xmlBuilder = this.xmlBuilder;
-        var processData = function (err, data) {
-            var getStatus = function (index) {
-                index = index > 0 ? ((index * 2) - 1) : 0;
+    getWeather(req) {
+        const wwp = this;
+        const xmlBuilder = wwp.xmlBuilder;
 
-                var code = data.daypart[0].iconCode[index];
-                if (typeof code !== 'number') {
-                    code = data.daypart[0].iconCode[index + 1]
-                }
+        return new Promise((resolve, reject) => {
+            var processData = function (err, data) {
+                var getStatus = function (index) {
+                    index = index > 0 ? ((index * 2) - 1) : 0;
 
-                var pop = data.daypart[0].precipChance[index];
-                if (typeof pop !== 'number') {
-                    pop = data.daypart[0].precipChance[index + 1];
-                }
+                    var code = data.daypart[0].iconCode[index];
+                    if (typeof code !== 'number') {
+                        code = data.daypart[0].iconCode[index + 1]
+                    }
 
-                var id = wuIconToCarrier[code];
+                    var pop = data.daypart[0].precipChance[index];
+                    if (typeof pop !== 'number') {
+                        pop = data.daypart[0].precipChance[index + 1];
+                    }
 
-                return {
-                    id: id,
-                    msg: carrierWeatherMap[id - 1],
-                    pop: pop
+                    var id = wuIconToCarrier[code];
+
+                    return {
+                        id: id,
+                        msg: carrierWeatherMap[id - 1],
+                        pop: pop
+                    };
                 };
+
+                if (!err) {
+                    var i, weather = [];
+                    for (i = 0; i < 5; i++) {
+                        var status = getStatus(i);
+
+                        weather.push({
+                            $: { "id": data.dayOfWeek[i] },
+                            timestamp: data.validTimeLocal[i],
+                            min_temp: {
+                                $: "units=f",
+                                _: data.temperatureMin[i]
+                            },
+                            max_temp: {
+                                $: "units=f",
+                                _: data.temperatureMax[i]
+                            },
+                            status_id: status.id,
+                            status_message: status.msg,
+                            pop: status.pop
+                        })
+                    }
+
+                    var weatherConfig = {
+                        weather_forecast: {
+                            $: {
+                                "xmlns:atom": "http://www.w3.org/2005/Atom",
+                                "version": "1.42"
+                            },
+                            'atom:link': {
+                                $: {
+                                    "rel": "self",
+                                    "href": "http://www.api.ing.carrier.com/weather/80526/forecast"
+                                }
+                            },
+                            'atom:link': {
+                                $: {
+                                    "rel": "http://www.api.ing.carrier.com/rels/weather",
+                                    "href": "http://www.api.ing.carrier.com/weather/80526"
+                                }
+                            },
+                            timestamp: new Date().toISOString(),
+                            ping: 240,
+                            days: weather
+                        }
+                    }
+
+                    try {
+                        resolve(xmlBuilder.buildObject(weatherConfig));
+                    } catch (e) {
+                        reject(e);
+                    }
+                } else {
+                    reject(err);
+                }
             };
 
-            if (!err) {
-                var i, weather = [];
-                for (i = 0; i < 5; i++) {
-                    var status = getStatus(i);
-
-                    weather.push({
-                        $: { "id": data.dayOfWeek[i] },
-                        timestamp: data.validTimeLocal[i],
-                        min_temp: {
-                            $: "units=f",
-                            _: data.temperatureMin[i]
-                        },
-                        max_temp: {
-                            $: "units=f",
-                            _: data.temperatureMax[i]
-                        },
-                        status_id: status.id,
-                        status_message: status.msg,
-                        pop: status.pop
-                    })
-                }
-
-                var weatherConfig = {
-                    weather_forecast: {
-                        $: {
-                            "xmlns:atom": "http://www.w3.org/2005/Atom",
-                            "version": "1.42"
-                        },
-                        'atom:link': {
-                            $: {
-                                "rel": "self",
-                                "href": "http://www.api.ing.carrier.com/weather/80526/forecast"
-                            }
-                        },
-                        'atom:link': {
-                            $: {
-                                "rel": "http://www.api.ing.carrier.com/rels/weather",
-                                "href": "http://www.api.ing.carrier.com/weather/80526"
-                            }
-                        },
-                        timestamp: new Date().toISOString(),
-                        ping: 240,
-                        days: weather
-                    }
-                }
-
-                try {
-                    callback(null, xmlBuilder.buildObject(weatherConfig));
-                } catch (e) {
-                    callback(e);
-                }
-            } else {
-                callback(err);
+            if (wwp.config.postalCode) {
+                wwp.wunderground.ForecastDaily()
+                    .FiveDay()
+                    .ByPostalCode(wwp.config.postalCode, wwp.config.countryCode || "US")
+                    .Language("en-US")
+                    .request(processData);
+            } else if (wwp.config.geoCode) {
+                wwp.wunderground.ForecastDaily()
+                    .FiveDay()
+                    .ByGeocode(wwp.config.geoCode.lat, wwp.config.geoCode.lon)
+                    .Language("en-US")
+                    .request(processData);
             }
-        };
-
-        if (this.config.postalCode) {
-            this.wunderground.ForecastDaily()
-                .FiveDay()
-                .ByPostalCode(this.config.postalCode, this.config.countryCode || "US")
-                .Language("en-US")
-                .request(processData);
-        } else if (this.config.geoCode) {
-            this.wunderground.ForecastDaily()
-                .FiveDay()
-                .ByGeocode(this.config.geoCode.lat, this.config.geoCode.lon)
-                .Language("en-US")
-                .request(processData);
-        }
+        });
     }
 
     getName() {
