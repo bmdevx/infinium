@@ -19,7 +19,7 @@ const DEFAULT_API_ENABLED = true;
 const DEFAULT_KEEP_HISTORY = false;
 const DEFAULT_FORWARD_INTERVAL = 15 * 60 * 1000; //in millis
 const DEAFULT_WEATHER_REFRESH_RATE = 15 * 60 * 1000; //in millis
-const DEFAULT_HISTORY_EXCLUSIONS = 'config,dealer,idu_config,odu_config,manifest,profile,status,system,weather'
+const DEFAULT_HISTORY_EXCLUSIONS = 'config,dealer,idu_config,odu_config,profile,status,system,weather'
 
 const DATA_DIR = process.env.INFINIUM_DATA || '/data/';
 const DATA_HISTORY_DIR = process.env.INFINIUM_DATA_HISTORY || '/data/history/';
@@ -68,13 +68,10 @@ class Infinium {
 
         const xmlBuilder = new xml2js.Builder({ headless: true });
         const xmlParser = new xml2js.Parser({ explicitArray: false });
-        const parseXml2Json = function (xml, callback) {
-            xmlParser.parseString(xml, callback);
-        };
-        const parseXml2JsonPromise = (xml) => {
+        const parseXml2Json = (xml) => {
             return xmlParser.parseStringPromise(xml);
         }
-        const buildXmlPromise = (obj) => {
+        const buildXml = (obj) => {
             return new Promise((resolve, reject) => {
                 try {
                     resolve(xmlBuilder.buildObject(obj));
@@ -129,6 +126,23 @@ class Infinium {
         }
         const readIFile = (file) => fsp.readFile(DATA_DIR + file, 'utf8');
 
+
+        const notify = (name, data, specEventData = null, specBroadcastData) => {
+            infinium.eventEmitter.emit(name, specEventData ? specEventData : data);
+            infinium.eventEmitter.emit('update', name, data);
+
+            if (infinium.ws) {
+                infinium.ws.broadcast(`$/ws/${name}`, {
+                    id: name,
+                    data: specBroadcastData ?
+                        specBroadcastData :
+                        (specEventData ? specEventData : data)
+
+                });
+            }
+        };
+
+
         const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: FORWARD_INTERVAL });
         const server = express();
 
@@ -153,12 +167,8 @@ class Infinium {
                         infinium.status = jsonNewStatus;
 
                         const status = utils.adjustIds(infinium.status, true);
-                        infinium.eventEmitter.emit('status', status.status);
-                        infinium.eventEmitter.emit('update', 'status', status);
+                        notify('status', status, status.status);
 
-                        if (infinium.ws) {
-                            infinium.ws.broadcast(WS_STATUS, status.status);
-                        }
 
                         resolve(loading ? 'Status Loaded' : infinium.status);
                     };
@@ -171,15 +181,15 @@ class Infinium {
 
                     (jsonNewStatus) ?
                         processJson(jsonNewStatus) :
-                        parseXml2JsonPromise(xmlNewStatus)
+                        parseXml2Json(xmlNewStatus)
                             .then(jsonNewStatus => processJson(jsonNewStatus))
-                            .catch(err => reject(err));
+                            .catch(e => reject(e));
                 });
             };
 
             const processXml = (newStatus) => {
                 return new Promise((resolve, reject) => {
-                    buildXmlPromise(newStatus)
+                    buildXml(newStatus)
                         .then(xmlStatus => {
                             resolve(process(xmlStatus, newStatus));
                         })
@@ -217,15 +227,15 @@ class Infinium {
 
                     (jsonNewSystem) ?
                         processJson(jsonNewSystem) :
-                        parseXml2JsonPromise(xmlNewSystem)
+                        parseXml2Json(xmlNewSystem)
                             .then(jsonNewSystem => processJson(jsonNewSystem))
-                            .catch(err => reject(err));
+                            .catch(e => reject(e));
                 });
             };
 
             const processXml = (newSystem) => {
                 return new Promise((resolve, reject) => {
-                    buildXmlPromise(newSystem)
+                    buildXml(newSystem)
                         .then(xmlSystem => {
                             resolve(process(xmlSystem, newSystem));
                         })
@@ -248,12 +258,7 @@ class Infinium {
                         infinium.config = jsonNewConfig;
 
                         const config = utils.adjustIds(infinium.config, true);
-                        infinium.eventEmitter.emit('config', config.config);
-                        infinium.eventEmitter.emit('update', 'config', config);
-
-                        if (infinium.ws) {
-                            infinium.ws.broadcast(WS_CONFIG, config.config);
-                        }
+                        notify('config', config, config.config);
 
                         resolve(loading ? 'Config Loaded' : infinium.config);
                     };
@@ -266,15 +271,15 @@ class Infinium {
 
                     (jsonNewConfig) ?
                         processJson(jsonNewConfig) :
-                        parseXml2JsonPromise(xmlNewConfig)
+                        parseXml2Json(xmlNewConfig)
                             .then(jsonNewConfig => processJson(jsonNewConfig))
-                            .catch(err => reject(err));
+                            .catch(e => reject(e));
                 });
             };
 
             const processXml = (newConfig) => {
                 return new Promise((resolve, reject) => {
-                    buildXmlPromise(newConfig)
+                    buildXml(newConfig)
                         .then(xmlConfig => {
                             resolve(process(xmlConfig, newConfig));
                         })
@@ -286,7 +291,7 @@ class Infinium {
 
             if (typeof newConfig === 'string') {
                 if (fromCarrier && !changes) {
-                    parseXml2JsonPromise(newConfig)
+                    parseXml2Json(newConfig)
                         .then(jsonNewConfig => {
                             if (jsonNewConfig.status.serverHasChanges === 'true') {
                                 infinium.changes = true;
@@ -298,7 +303,7 @@ class Infinium {
                                 return process(newConfig);
                             }
                         })
-                        .catch(err => reject(err));
+                        .catch(e => reject(e));
                 } else {
                     return process(newConfig);
                 }
@@ -400,22 +405,21 @@ class Infinium {
         //Thermostat retreiving manifest
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
-            cache.get({ request: utils.copyRequest(req), fileName: DATA + 'manifest' })
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + 'manifest' })
                 .then(cres => {
                     debug('Sending Manifest');
                     res.send(cres.data);
 
-                    parseXml2JsonPromise(cres.data)
+                    parseXml2Json(cres.data)
                         .then(obj => {
-                            infinium.eventEmitter.emit('manifest', obj);
-                            infinium.eventEmitter.emit('update', 'manifest', obj);
+                            notify('manifest', obj);
                         })
                         .catch(e => {
                             error(e);
                         });
                 })
                 .catch(e => {
-                    warnRetCar('Manifest', err);
+                    warnRetCar('Manifest', e);
                     res.send('');
                 });
         });
@@ -435,10 +439,7 @@ class Infinium {
                 .then(cres => {
                     debug('Sending Release Notes');
                     res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
-
-                    infinium.eventEmitter.emit('release_notes', cres.data);
-                    infinium.eventEmitter.emit('update', 'release_notes', cres.data);
-
+                    notify('release_notes', cres.data);
                 })
                 .catch(e => warnRetCar('Release Notes', e));
         });
@@ -456,21 +457,11 @@ class Infinium {
 
             cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName })
                 .then(cres => {
-                    var notice = {
-                        notice: 'System is trying to update itself. Check manifest for details',
+                    notify('system_update', {
+                        notice: 'System is trying to update itself. Check manifest for details.',
                         url: utils.buildUrlFromRequest(req),
                         fileName: fileName
-                    }
-
-                    infinium.eventEmitter.emit('system_update', notice);
-                    infinium.eventEmitter.emit('update', 'system_update', notice);
-
-                    if (infinium.ws) {
-                        infinium.ws.broadcast(WS_UPDATE, {
-                            id: 'system_update',
-                            data: notice
-                        });
-                    }
+                    });
                 })
                 .catch(e => warnRetCar('System Firmware', e))
                 .finally(() => res.send(''));
@@ -486,7 +477,7 @@ class Infinium {
                 this.changes = false;
             } else if (infinium.xmlSystem) {
                 debug('Sending config from system.xml');
-                buildXmlPromise({
+                buildXml({
                     config: infinium.system.system.config
                 })
                     .then(xml => {
@@ -573,12 +564,12 @@ class Infinium {
             if (infinium.sendStatusToCarrier && new Date().getTime() > infinium.sendStatusToCarrier) {
                 cache.get(utils.copyRequest(req))
                     .then(cres => {
-                        parseXml2JsonPromise(cres.data)
+                        parseXml2Json(cres.data)
                             .then(obj => {
                                 var changes = obj.status.serverHasChanges === 'true';
                                 obj.status.pingRate = changes ? 20 : 12;
 
-                                buildXmlPromise(obj)
+                                buildXml(obj)
                                     .then(xml => {
                                         res.send(xml);
                                         debug('Received and Forwared Status Response from Carrier');
@@ -607,6 +598,7 @@ class Infinium {
 
         //Thermostat requesting other data
         server.get('/systems/:system_id/:key', (req, res) => {
+            const key = req.params.key;
             debug(`Retreiving ${req.params.key} from: ${utils.buildUrlFromRequest(req)}`)
 
             cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, forwardInterval: 0 })
@@ -615,21 +607,15 @@ class Infinium {
                     res.send(cres.data);
 
                     if (cres.fromWeb) {
-                        parseXml2JsonPromise(cres.data)
+                        parseXml2Json(cres.data)
                             .then(obj => {
                                 var data = utils.adjustIds(obj);
 
-                                infinium.eventEmitter.emit(key, data);
-                                infinium.eventEmitter.emit('update', key, data);
-
-                                if (infinium.ws) {
-                                    infinium.ws.broadcast(`/ws/${key}`, data);
-                                    infinium.ws.broadcast(WS_UPDATE, {
-                                        id: key,
-                                        data: data,
-                                        response: true
-                                    });
-                                }
+                                notify(key, data, null, {
+                                    id: key,
+                                    data: data,
+                                    response: true
+                                });
                             })
                             .catch(e => error(`Failed to parse: [GET] ${key} - ${e}`))
                     }
@@ -642,24 +628,13 @@ class Infinium {
 
         //Thermostat reporting other data
         server.post('/systems/:system_id/:key', (req, res) => {
-            var key = req.params.key;
+            const key = req.params.key;
             debug(`Receiving ${key}.xml`);
 
             if (req.body.data) {
-                parseXml2JsonPromise(req.body.data)
+                parseXml2Json(req.body.data)
                     .then(obj => {
-                        var data = utils.adjustIds(obj);
-
-                        infinium.eventEmitter.emit(key, data);
-                        infinium.eventEmitter.emit('update', key, data);
-
-                        if (infinium.ws) {
-                            infinium.ws.broadcast(`/ws/${key}`, data);
-                            infinium.ws.broadcast(WS_UPDATE, {
-                                id: key,
-                                data: data
-                            });
-                        }
+                        notify(key, utils.adjustIds(obj));
                     })
                     .catch(e => error(`Failed to parse: ${key} - ${e}`));
 
@@ -683,7 +658,9 @@ class Infinium {
         server.get('/weather/:zip/forecast', (req, res) => {
             var now = new Date().getTime();
 
-            const sendCachedWeather = res.send(infinium.xmlWeather ? infinium.xmlWeather : '');
+            const sendCachedWeather = () => {
+                res.send(infinium.xmlWeather ? infinium.xmlWeather : '');
+            };
 
             const updateWeather = async (xmlWeather) => {
                 infinium.xmlWeather = xmlWeather;
@@ -691,21 +668,15 @@ class Infinium {
 
                 writeIFile('weather', xmlWeather);
 
-                parseXml2JsonPromise(xmlWeather)
+                parseXml2Json(xmlWeather)
                     .then(obj => {
                         var data = utils.adjustIds(obj);
 
-                        infinium.eventEmitter.emit('weather', data);
-                        infinium.eventEmitter.emit('update', 'weather', data);
-
-                        if (infinium.ws) {
-                            infinium.ws.broadcast(`/ws/weather`, data);
-                            infinium.ws.broadcast(WS_UPDATE, {
-                                id: 'weather',
-                                data: data,
-                                response: true
-                            });
-                        }
+                        notify('weather', data, null, {
+                            id: 'weather',
+                            data: data,
+                            response: true
+                        });
                     })
                     .catch(e => error(`Failed to parse: weather - ${e}`));
             };
@@ -718,8 +689,8 @@ class Infinium {
                 if (weather instanceof Promise) {
                     weather
                         .then(xmlWeather => {
-                            res.send(xmlWeather);
                             updateWeather(xmlWeather)
+                            return res.send(xmlWeather);
                         })
                         .catch(e => {
                             error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${e}`);
