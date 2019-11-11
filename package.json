@@ -1,6 +1,6 @@
 {
   "name": "infinium",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Infinity Touch Thermostat Passive Monitor and Controller",
   "main": "launch.js",
   "directories": {

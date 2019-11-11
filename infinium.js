@@ -405,7 +405,7 @@ class Infinium {
         //Thermostat retreiving manifest
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + 'manifest' })
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + 'manifest.xml' })
                 .then(cres => {
                     debug('Sending Manifest');
                     res.send(cres.data);

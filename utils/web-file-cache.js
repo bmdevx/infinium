@@ -1,6 +1,5 @@
 const request = require('request');
 const fs = require('fs');
-const fsc = fs.constants;
 const fsp = fs.promises;
 
 const DEFAULT_FORDWARD_INTERVAL = 15 * 60 * 1000; //15 minutes in millis
@@ -169,14 +168,14 @@ class WebFileCache {
                 request(req, (err, res, data) => {
                     if (!err) {
                         if (res.statusCode === 200) {
-                            try {
-                                fs.writeFileSync(fcc.file, data, 'utf8');
-                                callback(null, data, true);
-                                fcc.lastRetrieved = new Date().getTime();
-                                resolve({ data: data, fromWeb: true })
-                            } catch (e) {
-                                reject(`Unable to save cache file: ${fcc.file}`);
-                            }
+                            fsp.writeFile(fcc.file, data, 'utf8')
+                                .then(_ => {
+                                    fcc.lastRetrieved = new Date().getTime();
+                                    resolve({ data: data, fromWeb: true })
+                                })
+                                .catch(e => {
+                                    reject(`Unable to save cache file: ${fcc.file} - ${e}`);
+                                });
                         } else {
                             reject(`Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
                             fcc.lastRetrieved = new Date().getTime(); // say it went ok even if it fails as their servers have issues
