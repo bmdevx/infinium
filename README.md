@@ -18,13 +18,14 @@
 ### Config Example
 ```
 {
-    port: 3000,                 // Server Port
-    wsEnabled: true,            // WebSockets Enabled
-    apiEnabled: true,           // REST API Enabled
-    forwardInterval: 900000,    // How often to forward data request to Carrier (in millis)
-    weatherRefreshRate: 300000, // How often for weather module to update
-    keepOtherHistory: false,    // Keep Timestamped config and data files
-    debugMode: false,           // Enable Debugging in the logs
+    port: 3000,                  // Server Port
+    wsEnabled: true,             // WebSockets Enabled
+    apiEnabled: true,            // REST API Enabled
+    forwardInterval: 900000,     // How often to forward data request to Carrier (in millis)
+    weatherRefreshRate: 300000,  // How often for weather module to update
+    keepHistory: false,          // Keep Timestamped config and data files
+    historyExclusions: 'system', // List of files not kept in the history folder. (comma delimited)
+    debugMode: false,            // Enable Debugging in the logs
     
     // Optional. If not in config Infinium defaults to getting weather data from Carrier
     wunderground {
@@ -48,7 +49,8 @@
 INFINIUM_PORT = 3000
 INFINIUM_WS_ENABLED = true
 INFINIUM_API_ENABLED = true
-INFINIUM_KEEP_OTHER_HISTORY = false
+INFINIUM_KEEP_HISTORY = false
+INFINIUM_HISTORY_EXCLUSIONS = 'config,status,system'
 INFINIUM_FORWARD_INTERVAL = 90000
 INFINIUM_WEATHER_REFRESH_RATE = 90000
 INFINIUM_DEBUG_MODE = false

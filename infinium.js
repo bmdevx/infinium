@@ -60,7 +60,7 @@ class Infinium {
         const API_ENABLED = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
         const KEEP_HISTORY = utils.getConfigVar(config.keepHistory, process.env.INFINIUM_KEEP_HISTORY, DEFAULT_KEEP_HISTORY);
         const HISTORY_EXCLUSIONS = utils.getConfigVar(config.historyExclusions, process.env.INFINIUM_HISTORY_EXCLUSIONS, DEFAULT_HISTORY_EXCLUSIONS);
-        const HISTORY_EXCLUSIONS_ARR = HISTORY_EXCLUSIONS ? HISTORY_EXCLUSIONS.split(',') : [];
+        const HISTORY_EXCLUSIONS_ARR = HISTORY_EXCLUSIONS ? HISTORY_EXCLUSIONS.split(',').map(item => item.trim()) : [];
         const FORWARD_INTERVAL = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
         const WEATHER_REFRESH_RATE = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
         const DEBUG = utils.getConfigVar(config.debugMode, process.env.INFINIUM_DEBUG_MODE, DEBUG_MODE);
@@ -116,8 +116,10 @@ class Infinium {
             fsp.writeFile(DATA_DIR + file, data, 'utf8')
                 .catch(e => error(`Unable to save ${file} ${e}`));
 
-            if (KEEP_HISTORY && !HISTORY_EXCLUSIONS_ARR.includes(file.split('.')[0])) {
+            var parts = file.split('/');
+            var key = parts[parts.length - 1].split('.')[0];
 
+            if (KEEP_HISTORY && !HISTORY_EXCLUSIONS_ARR.includes(key)) {
                 var dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
                 var hfile = `${DATA_HISTORY_DIR}${file}_${dt}.xml`;
                 fsp.writeFile(hfile, 'utf8')
@@ -150,6 +152,7 @@ class Infinium {
         infinium.running = false;
         infinium.changes = false;
         infinium.loading = true;
+        infinium.sendStatusToCarrier = 0;
 
         infinium.log = {
             debug: debug,
@@ -296,9 +299,9 @@ class Infinium {
                             if (jsonNewConfig.status.serverHasChanges === 'true') {
                                 infinium.changes = true;
                                 jsonNewConfig.status.pingRate = 12;
-                                infinium.sendStatusToCarrier = new Date().getTime() + (2 * 60 * 1000);
+                                infinium.sendStatusToCarrier = new Date().getTime();
 
-                                return processXml(newConfig);
+                                return processXml(jsonNewConfig);
                             } else {
                                 return process(newConfig);
                             }
@@ -332,16 +335,20 @@ class Infinium {
 
                     debug(`Listening on port ${PORT}`, true, true);
 
-                    if (API_ENABLED) {
-                        debug(`Remote API is Enabled`, true, true);
-                    }
-
                     if (KEEP_HISTORY) {
-                        debug(`Keep Other History Enabled '${DATA_HISTORY_DIR}'`, true, true);
+                        debug(`Keep History Enabled: '${DATA_HISTORY_DIR}'`, true, true);
                     }
 
                     if (DEBUG) {
                         debug('Debug Mode Enabled');
+                    }
+
+                    if (API_ENABLED) {
+                        debug(`REST API Enabled`, true, true);
+                    }
+
+                    if (WS_ENABLED) {
+                        debug(`Websockets Enabled`, true, true);
                     }
                 });
             }
@@ -405,7 +412,7 @@ class Infinium {
         //Thermostat retreiving manifest
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + 'manifest.xml' })
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + 'manifest.xml', timeout: 5000 })
                 .then(cres => {
                     debug('Sending Manifest');
                     res.send(cres.data);
@@ -437,11 +444,12 @@ class Infinium {
 
             cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName })
                 .then(cres => {
-                    debug('Sending Release Notes');
-                    res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
                     notify('release_notes', cres.data);
                 })
                 .catch(e => warnRetCar('Release Notes', e));
+
+            debug('Sending Release Notes');
+            res.send('WARNING: Upgrading firmware may cause Infinium to stop working');
         });
 
         //Thermostat retreiving firmware
@@ -463,8 +471,9 @@ class Infinium {
                         fileName: fileName
                     });
                 })
-                .catch(e => warnRetCar('System Firmware', e))
-                .finally(() => res.send(''));
+                .catch(e => warnRetCar('System Firmware', e));
+
+            res.send('');
         });
 
 
@@ -539,6 +548,7 @@ class Infinium {
         //Thermostat reporting status
         server.post('/systems/:system_id/status', (req, res) => {
             debug('Receiving status.xml');
+            const now = new Date().getTime();
 
             if (req.body.data) {
                 infinium.updateStatus(req.body.data)
@@ -561,8 +571,8 @@ class Infinium {
                 }
             }
 
-            if (infinium.sendStatusToCarrier && new Date().getTime() > infinium.sendStatusToCarrier) {
-                cache.get(utils.copyRequest(req))
+            if (infinium.sendStatusToCarrier && now > infinium.sendStatusToCarrier) {
+                cache.get({ request: utils.copyRequest(req), refresh: true })
                     .then(cres => {
                         parseXml2Json(cres.data)
                             .then(obj => {
@@ -571,8 +581,11 @@ class Infinium {
 
                                 buildXml(obj)
                                     .then(xml => {
-                                        res.send(xml);
-                                        debug('Received and Forwared Status Response from Carrier');
+
+                                        infinium.statusResponse = xml;
+                                        infinium.statusResponseReceived = new Date().getTime();
+
+                                        debug('Received Status Response from Carrier. Pending Send');
                                     })
                                     .catch(e => {
                                         res.send('');
@@ -581,14 +594,20 @@ class Infinium {
                             })
                             .catch(e => {
                                 error('Received Status Response from Carrier but it Failed to parse.');
-
-                                res.send(buildResponse());
-                                debug(`Sending Status Response - Changes: ${infinium.changes}`);
                             });
 
-                        infinium.sendStatusToCarrier = null;
+                        infinium.sendStatusToCarrier = now + (15 * 60 * 1000); //set for 15 minutes in future
                     })
                     .catch(e => warnRetCar('Status Reponse', e));
+            }
+
+
+            if (infinium.statusResponse && infinium.statusResponseReceived
+                && (now - infinium.statusResponseReceived) < 60000) {
+                res.send(infinium.statusResponse);
+                infinium.statusResponse = null;
+                infinium.statusResponseReceived = 0;
+                debug(`Sending (Carrier) Status Response - Changes: ${infinium.changes.toString()}`);
             } else {
                 res.send(buildResponse());
                 debug(`Sending Status Response - Changes: ${infinium.changes.toString()}`);
@@ -601,9 +620,26 @@ class Infinium {
             const key = req.params.key;
             debug(`Retreiving ${req.params.key} from: ${utils.buildUrlFromRequest(req)}`)
 
-            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, forwardInterval: 0 })
+            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, refresh: true, timeout: 5000 })
                 .then(cres => {
-                    debug(`Sending Carrier Response to: [GET] ${req.path}`)
+
+                    if (cres.error) {
+                        warnRetCar(`(${key}) Response`, e);
+                        console.warn(`Using Cached File due to error`);
+
+                        /* Testing Only */
+                        if (DEBUG) {
+                            fsp.appendFile(DATA_DIR + 'req.log', `--Failed--\n${utils.stringifyCirc(req)}\n\n`);
+                        }
+                    } else {
+                        debug(`Sending Carrier Response to: [GET] ${req.path}`)
+
+                        /* Testing Only */
+                        if (DEBUG) {
+                            fsp.appendFile(DATA_DIR + 'req.log', `**Success*\n${utils.stringifyCirc(req)}\n\n`);
+                        }
+                    }
+
                     res.send(cres.data);
 
                     if (cres.fromWeb) {
@@ -621,8 +657,9 @@ class Infinium {
                     }
                 })
                 .catch(e => {
-                    res.send('');
+                    res.send(utils.getEmptyCarrierResponse(key));
                     warnRetCar(`[GET] ${req.path}`, e);
+                    debug(`Respoing to [GET] ${req.path} with generated response`);
                 });
         });
 
@@ -638,18 +675,38 @@ class Infinium {
                     })
                     .catch(e => error(`Failed to parse: ${key} - ${e}`));
 
-
                 writeIFile(`${key}.xml`, req.body.data);
             }
 
-            cache.get(utils.copyRequest(req))
+            cache.get({ request: utils.copyRequest(req), forwardInterval: 3600000 })
                 .then(cres => {
-                    debug(`Sending Carrier Response to: [POST] ${req.path}`)
+                    if (cres.error) {
+                        warnRetCar(`(${key}) Response`, e);
+                        console.warn(`Using Cached File due to error`);
+
+                        /* Testing Only */
+                        if (DEBUG) {
+                            fsp.appendFile(DATA_DIR + 'req.log', `--Failed--\n${utils.stringifyCirc(req)}\n\n`);
+                        }
+                    } else {
+                        debug(`Sending Carrier Response to: [POST] ${req.path}`)
+
+                        /* Testing Only */
+                        if (DEBUG) {
+                            fsp.appendFile(DATA_DIR + 'req.log', `**Success*\n${utils.stringifyCirc(req)}\n\n`);
+                        }
+                    }
+
                     res.send(cres.data);
                 })
                 .catch(e => {
                     res.send('');
                     warnRetCar(`(${key}) Response`, e);
+
+                    /* Testing Only */
+                    if (DEBUG) {
+                        fsp.appendFile(DATA_DIR + 'req.log', `--Failed--\n${utils.stringifyCirc(req)}\n\n`);
+                    }
                 });
         });
 
@@ -695,7 +752,7 @@ class Infinium {
                         .then(xmlWeather => {
                             debug(`Sending Weather Data from ${infinium.weatherProvider.getName()}`);
                             updateWeather(xmlWeather)
-                            return res.send(xmlWeather);
+                            res.send(xmlWeather);
                         })
                         .catch(e => {
                             error(`Unable to retrieve weather (${infinium.weatherProvider.getName()}) - ${e}`);

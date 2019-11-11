@@ -56,7 +56,7 @@ class WebFileCache {
                 forwardInterval: (config.forwardInterval || this.forwardInterval),
                 lastRetrieved: config.lastRetrieved || 0,
                 file: config.fileName || (config.cacheDir || this.cacheDir) +
-                    (key.replace(/[/\\|&;$%@"<>()+,]/g, "").replace(':', '-') + '.cache')
+                    (key.replace(/[/\\|&;$%@"<>()+,]/g, "").replace(':', '-') + '_res.cache')
             }
         }
 
@@ -133,6 +133,10 @@ class WebFileCache {
                 if (obj.fileName) {
                     config.fileName = obj.fileName;
                 }
+
+                if (obj.timeout) {
+                    config.timeout = obj.timeout;
+                }
             }
 
             if (!req) {
@@ -143,7 +147,11 @@ class WebFileCache {
                 }
 
                 if (!req.timeout) {
-                    req.timeout = 1500;
+                    if (config.timeout) {
+                        req.timeout = config.timeout;
+                    } else {
+                        req.timeout = 1500;
+                    }
                 }
             }
 
@@ -161,37 +169,57 @@ class WebFileCache {
                 this.cache.set(key, fcc);
             }
 
-            var time = (new Date().getTime() - fcc.lastRetrieved);
+            const now = (new Date().getTime() - fcc.lastRetrieved);
 
-            if (config.refresh || (time > fcc.forwardInterval) || !fs.existsSync(fcc.file)) {
+            if (config.refresh || (now > fcc.forwardInterval)) {
                 const method = req.method;
+
+                const getCachedOrReject = (file, err) => {
+                    if (fs.existsSync(file)) {
+                        fsp.readFile(file, 'utf8')
+                            .then(data => {
+                                resolve({ data: data, fromWeb: false, error: e });
+                            })
+                            .catch(e => {
+                                reject(err);
+                            });
+                    } else {
+                        reject(err);
+                    }
+                }
+
                 request(req, (err, res, data) => {
                     if (!err) {
                         if (res.statusCode === 200) {
                             fsp.writeFile(fcc.file, data, 'utf8')
                                 .then(_ => {
                                     fcc.lastRetrieved = new Date().getTime();
+                                    this.saveCache();
                                     resolve({ data: data, fromWeb: true })
                                 })
                                 .catch(e => {
-                                    reject(`Unable to save cache file: ${fcc.file} - ${e}`);
+                                    getCachedOrReject(fcc.file, `Unable to save cache file: ${fcc.file} - ${e}`);
                                 });
                         } else {
-                            reject(`Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
-                            fcc.lastRetrieved = new Date().getTime(); // say it went ok even if it fails as their servers have issues
+                            getCachedOrReject(fcc.file, `Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
                         }
                     } else {
-                        reject(`Request Error ${method ? `[${method}]` : ''}(${req.url}): ${err}`);
-                        fcc.lastRetrieved = new Date().getTime(); // say it went ok even if it fails as their servers have issues
+                        getCachedOrReject(fcc.file, `Request Error ${method ? `[${method}]` : ''}(${req.url}): ${err}`);
                     }
 
+                    fcc.lastRetrieved = now; // say it went ok even if it fails as their servers have issues
                     this.saveCache();
                 });
-            } else {
+            } else if (fs.existsSync(fcc.file)) {
                 fsp.readFile(fcc.file, 'utf8')
                     .then(data => {
                         resolve({ data: data, fromWeb: false })
+                    })
+                    .catch(e => {
+                        reject(`Unable to retreive file (${fcc.file}) ${e}`);
                     });
+            } else {
+                reject('File was not cached');
             }
         });
     }

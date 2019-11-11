@@ -187,6 +187,10 @@ class utils {
         return cv !== undefined ? cv :
             (ev !== undefined ? ev : dv);
     }
+
+    static getEmptyCarrierResponse(responseName) {
+        return `<${responseName} version="1.3" xmlns:atom="http://www.w3.org/2005/Atom"/>`;
+    }
 }
 
 //Local ISO Format
