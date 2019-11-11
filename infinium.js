@@ -667,7 +667,7 @@ class Infinium {
                     infinium.xmlWeather = xmlWeather;
                     infinium.lastWeatherUpdate = now;
 
-                    writeIFile('weather', xmlWeather);
+                    writeIFile('weather.xml', xmlWeather);
 
                     parseXml2Json(xmlWeather)
                         .then(obj => {
