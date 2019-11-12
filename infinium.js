@@ -153,18 +153,23 @@ class Infinium {
         const readIFile = (file) => fsp.readFile(DATA_DIR + file, 'utf8');
 
 
-        const notify = (name, data, specEventData = null, specBroadcastData) => {
+        const notify = (name, data, specEventData = null, specBroadcastData = null) => {
             infinium.eventEmitter.emit(name, specEventData ? specEventData : data);
             infinium.eventEmitter.emit('update', name, data);
 
             if (infinium.ws) {
-                infinium.ws.broadcast(`$/ws/${name}`, {
-                    id: name,
-                    data: specBroadcastData ?
-                        specBroadcastData :
-                        (specEventData ? specEventData : data)
 
+                infinium.ws.broadcast(`/ws/${name}`,
+                    specBroadcastData ? specBroadcastData :
+                        (specEventData ? specEventData : data)
+                );
+
+                infinium.ws.broadcast(`/ws/update`, specBroadcastData ? specBroadcastData : {
+                    id: name,
+                    data: data
                 });
+            } else {
+                debug('broadcast not enabled');
             }
         };
 
@@ -939,7 +944,7 @@ class Infinium {
             infinium.ws = {};
             infinium.ws.server = expressWS(server);
 
-            infinium.ws.broadcast = async (path, data) => {
+            infinium.ws.broadcast = (path, data) => {
                 try {
                     var clients = infinium.ws.server.getWss().clients
 
@@ -948,11 +953,13 @@ class Infinium {
                             return s.route === path;
                         });
 
-                        clients.forEach((client) => {
-                            client.send(JSON.stringify(data));
-                        });
 
                         if (clients.length > 0) {
+
+                            clients.forEach((client) => {
+                                client.send(JSON.stringify(data));
+                            });
+
                             debug(`WS Sending '${path}' to ${clients.length} client${clients.length > 1 ? 's' : ''}`);
                         }
                     }
