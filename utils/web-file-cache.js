@@ -174,7 +174,7 @@ class WebFileCache {
                 const getCachedOrReject = (file, err) => {
                     if (fs.existsSync(file)) {
                         try {
-                            resolve({ data: fs.readFileSync(file, 'utf8'), fromWeb: false, error: e });
+                            resolve({ data: fs.readFileSync(file, 'utf8'), fromWeb: false, error: err });
                         } catch (e) {
                             reject(err + `: Error opening cached file: ${file} : ${e}`);
                         }
@@ -198,6 +198,10 @@ class WebFileCache {
                         } else {
                             getCachedOrReject(fcc.file, `Request Status Error ${method ? `[${method}]` : ''}(${req.url}): ${res.statusCode}`);
                         }
+                    } else if (err == 'Error: ESOCKETTIMEDOUT' && method === 'POST') { // ignore as their servers have issues
+                        fcc.lastRetrieved = new Date().getTime();
+                        this.saveCache();
+                        getCachedOrReject(fcc.file, err);
                     } else {
                         getCachedOrReject(fcc.file, `Request Error ${method ? `[${method}]` : ''}(${req.url}): ${err}`);
                     }
@@ -210,10 +214,10 @@ class WebFileCache {
                         resolve({ data: data, fromWeb: false })
                     })
                     .catch(e => {
-                        reject(`Unable to retreive file (${fcc.file}) ${e}`);
+                        reject(`Unable to retreive file (${fcc.file}) - ${e}`);
                     });
             } else {
-                reject('File was not cached');
+                reject('No cached File');
             }
         });
     }

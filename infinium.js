@@ -22,6 +22,7 @@ const DEFAULT_LISTEN_PORT = 3000;
 const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
 const DEFAULT_KEEP_HISTORY = false;
+const DEFAULT_KEEP_HISTORY_ON_CHANGE = true;
 const DEFAULT_FORWARD_INTERVAL = FIFTEEN_MIN; //in millis
 const DEAFULT_WEATHER_REFRESH_RATE = FIFTEEN_MIN; //in millis
 const DEFAULT_HISTORY_EXCLUSIONS = 'config,dealer,idu_config,odu_config,profile,status,system,weather'
@@ -65,6 +66,7 @@ class Infinium {
         const API_ENABLED = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
         const KEEP_HISTORY = utils.getConfigVar(config.keepHistory, process.env.INFINIUM_KEEP_HISTORY, DEFAULT_KEEP_HISTORY);
         const HISTORY_EXCLUSIONS = utils.getConfigVar(config.historyExclusions, process.env.INFINIUM_HISTORY_EXCLUSIONS, DEFAULT_HISTORY_EXCLUSIONS);
+        const KEEP_HISTORY_ON_CHANGE = utils.getConfigVar(config.keepHistoryOnChange, process.env.INFINIUM_KEEP_HISTORY_ON_CHANGE, DEFAULT_KEEP_HISTORY_ON_CHANGE);
         const HISTORY_EXCLUSIONS_ARR = HISTORY_EXCLUSIONS ? HISTORY_EXCLUSIONS.split(',').map(item => item.trim()) : [];
         const FORWARD_INTERVAL = utils.getConfigVar(config.forwardInterval, process.env.INFINIUM_FORWARD_INTERVAL, DEFAULT_FORWARD_INTERVAL);
         const WEATHER_REFRESH_RATE = utils.getConfigVar(config.weatherRefreshRate, process.env.INFINIUM_WEATHER_REFRESH_RATE, DEAFULT_WEATHER_REFRESH_RATE);
@@ -118,18 +120,35 @@ class Infinium {
         };
 
         const writeIFile = (file, data) => {
-            fsp.writeFile(DATA_DIR + file, data, 'utf8')
-                .catch(e => error(`Unable to save ${file} ${e}`));
-
             var parts = file.split('/');
             var key = parts[parts.length - 1].split('.')[0];
 
             if (KEEP_HISTORY && !HISTORY_EXCLUSIONS_ARR.includes(key)) {
-                var dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
-                var hfile = `${DATA_HISTORY_DIR}${key}_${dt}.xml`;
-                fsp.writeFile(hfile, 'utf8')
-                    .catch(e => error(`Unable to save ${hfile} - ${e}`));
+                const dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
+                const hfile = `${DATA_HISTORY_DIR}${key}_${dt}.xml`;
+
+                const writeHistoryFile = (hf, d) => {
+                    fsp.writeFile(hf, d, 'utf8')
+                        .catch(e => error(`Unable to save ${hfile} - ${e}`));
+                }
+
+                if (KEEP_HISTORY_ON_CHANGE) {
+                    fsp.readFile(file, 'utf8')
+                        .then(fd => {
+                            if (fd !== data) {
+                                writeHistoryFile(hfile, data);
+                            }
+                        })
+                        .catch(e => {
+                            writeHistoryFile(hfile, data);
+                        });;
+                } else {
+                    writeHistoryFile(hfile, data);
+                }
             }
+
+            fsp.writeFile(DATA_DIR + file, data, 'utf8')
+                .catch(e => error(`Unable to save ${file} ${e}`));
         }
         const readIFile = (file) => fsp.readFile(DATA_DIR + file, 'utf8');
 
@@ -643,6 +662,7 @@ class Infinium {
                         debug(`Sending Cached ${key} Response due to request error`);
                     } else {
                         debug(`Sending ${key} Response from Carrier`);
+                        writeIFile(`${key}.xml`, cres.data);
                     }
 
                     res.send(cres.data);

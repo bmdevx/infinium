@@ -24,6 +24,7 @@
     forwardInterval: 900000,     // How often to forward data request to Carrier (in millis)
     weatherRefreshRate: 300000,  // How often for weather module to update
     keepHistory: false,          // Keep Timestamped config and data files
+    keepHistoryOnChange: true,   // Only create new history file if the data has changed
     historyExclusions: 'system', // List of files not kept in the history folder. (comma delimited)
     debugMode: false,            // Enable Debugging in the logs
     
@@ -51,6 +52,7 @@ INFINIUM_WS_ENABLED = true
 INFINIUM_API_ENABLED = true
 INFINIUM_KEEP_HISTORY = false
 INFINIUM_HISTORY_EXCLUSIONS = 'config,status,system'
+INFINIUM_KEEP_HISTORY_ON_CHANGE = true
 INFINIUM_FORWARD_INTERVAL = 90000
 INFINIUM_WEATHER_REFRESH_RATE = 90000
 INFINIUM_DEBUG_MODE = false
