@@ -12,13 +12,18 @@ const WundergroundWeatherProvider = require('./utils/wunderground-weather-provid
 
 const DEBUG_MODE = false;
 
+const ONE_MIN = 1 * 60 * 1000;
+const FIFTEEN_MIN = 15 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
+const CARRIER_REQUEST_TIMEOUT = 3 * 60 * 1000; // It is long since their servers are super slows
+
 const DEFAULT_TZ = 0;
 const DEFAULT_LISTEN_PORT = 3000;
 const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
 const DEFAULT_KEEP_HISTORY = false;
-const DEFAULT_FORWARD_INTERVAL = 15 * 60 * 1000; //in millis
-const DEAFULT_WEATHER_REFRESH_RATE = 15 * 60 * 1000; //in millis
+const DEFAULT_FORWARD_INTERVAL = FIFTEEN_MIN; //in millis
+const DEAFULT_WEATHER_REFRESH_RATE = FIFTEEN_MIN; //in millis
 const DEFAULT_HISTORY_EXCLUSIONS = 'config,dealer,idu_config,odu_config,profile,status,system,weather'
 
 const DATA_DIR = process.env.INFINIUM_DATA || '/data/';
@@ -109,7 +114,7 @@ class Infinium {
             }
         };
         const warnRetCar = function (what, err, logToFile = true) {
-            warn(`Unable to retreive ${what} from Carrier - ${err}`, logToFile);
+            warn(`Unable to retreive ${what} from Carrier - ${err}`, DEBUG && logToFile);
         };
 
         const writeIFile = (file, data) => {
@@ -121,7 +126,7 @@ class Infinium {
 
             if (KEEP_HISTORY && !HISTORY_EXCLUSIONS_ARR.includes(key)) {
                 var dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
-                var hfile = `${DATA_HISTORY_DIR}${file}_${dt}.xml`;
+                var hfile = `${DATA_HISTORY_DIR}${key}_${dt}.xml`;
                 fsp.writeFile(hfile, 'utf8')
                     .catch(e => error(`Unable to save ${hfile} - ${e}`));
             }
@@ -412,9 +417,14 @@ class Infinium {
         //Thermostat retreiving manifest
         server.get('/manifest', (req, res) => {
             debug('Retreiving Manifest');
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + 'manifest.xml', timeout: 5000 })
+            cache.get({
+                request: utils.copyRequest(req),
+                fileName: DATA_DIR + 'manifest.xml',
+                forwardInterval: ONE_HOUR,
+                timeout: CARRIER_REQUEST_TIMEOUT
+            })
                 .then(cres => {
-                    debug('Sending Manifest');
+                    debug(`Sending Manifest from ${(cres.fromWeb ? 'Carrier' : 'Cache')}`);
                     res.send(cres.data);
 
                     parseXml2Json(cres.data)
@@ -442,7 +452,7 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName })
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName, timeout: CARRIER_REQUEST_TIMEOUT })
                 .then(cres => {
                     notify('release_notes', cres.data);
                 })
@@ -463,7 +473,7 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName })
+            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName, timeout: CARRIER_REQUEST_TIMEOUT })
                 .then(cres => {
                     notify('system_update', {
                         notice: 'System is trying to update itself. Check manifest for details.',
@@ -501,9 +511,15 @@ class Infinium {
                 sendFromCarrier = true;
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + CONFIG_XML, refresh: sendFromCarrier, forwardInterval: 3600000 })
+            cache.get({
+                request: utils.copyRequest(req),
+                fileName: DATA_DIR + CONFIG_XML,
+                refresh: sendFromCarrier,
+                timeout: CARRIER_REQUEST_TIMEOUT,
+                forwardInterval: ONE_HOUR
+            })
                 .then(cres => {
-                    debug('Retreiving Config');
+                    debug('Retreived Config from Carrier');
 
                     infinium.updateConfig(cres.data, false, true).then(config => {
                         if (sendFromCarrier) {
@@ -541,8 +557,8 @@ class Infinium {
                     .catch(e => error(e));
             }
 
-            cache.get(utils.copyRequest(req))
-                .catch(e => warnRetCar('System Response', e));
+            cache.get({ request: utils.copyRequest(req) })
+                .catch(e => warnRetCar('(system) Response', e));
         });
 
         //Thermostat reporting status
@@ -596,14 +612,14 @@ class Infinium {
                                 error('Received Status Response from Carrier but it Failed to parse.');
                             });
 
-                        infinium.sendStatusToCarrier = now + (15 * 60 * 1000); //set for 15 minutes in future
+                        infinium.sendStatusToCarrier = now + FORWARD_INTERVAL;
                     })
                     .catch(e => warnRetCar('Status Reponse', e));
             }
 
 
             if (infinium.statusResponse && infinium.statusResponseReceived
-                && (now - infinium.statusResponseReceived) < 60000) {
+                && (now - infinium.statusResponseReceived) < ONE_MIN) {
                 res.send(infinium.statusResponse);
                 infinium.statusResponse = null;
                 infinium.statusResponseReceived = 0;
@@ -618,26 +634,15 @@ class Infinium {
         //Thermostat requesting other data
         server.get('/systems/:system_id/:key', (req, res) => {
             const key = req.params.key;
-            debug(`Retreiving ${req.params.key} from: ${utils.buildUrlFromRequest(req)}`)
+            debug(`Retreiving ${req.params.key}`)
 
-            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, refresh: true, timeout: 5000 })
+            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, forwardInterval: ONE_HOUR, timeout: CARRIER_REQUEST_TIMEOUT })
                 .then(cres => {
-
                     if (cres.error) {
                         warnRetCar(`(${key}) Response`, e);
-                        console.warn(`Using Cached File due to error`);
-
-                        /* Testing Only */
-                        if (DEBUG) {
-                            fsp.appendFile(DATA_DIR + 'req.log', `--Failed--\n${utils.stringifyCirc(req)}\n\n`);
-                        }
+                        debug(`Sending Cached ${key} Response due to request error`);
                     } else {
-                        debug(`Sending Carrier Response to: [GET] ${req.path}`)
-
-                        /* Testing Only */
-                        if (DEBUG) {
-                            fsp.appendFile(DATA_DIR + 'req.log', `**Success*\n${utils.stringifyCirc(req)}\n\n`);
-                        }
+                        debug(`Sending ${key} Response from Carrier`);
                     }
 
                     res.send(cres.data);
@@ -657,9 +662,9 @@ class Infinium {
                     }
                 })
                 .catch(e => {
+                    warnRetCar(`(${key}) Response`, e);
+                    debug(`Respoing to ${key} request with generated response`);
                     res.send(utils.getEmptyCarrierResponse(key));
-                    warnRetCar(`[GET] ${req.path}`, e);
-                    debug(`Respoing to [GET] ${req.path} with generated response`);
                 });
         });
 
@@ -678,35 +683,20 @@ class Infinium {
                 writeIFile(`${key}.xml`, req.body.data);
             }
 
-            cache.get({ request: utils.copyRequest(req), forwardInterval: 3600000 })
+            cache.get({ request: utils.copyRequest(req), forwardInterval: ONE_HOUR })
                 .then(cres => {
                     if (cres.error) {
                         warnRetCar(`(${key}) Response`, e);
-                        console.warn(`Using Cached File due to error`);
-
-                        /* Testing Only */
-                        if (DEBUG) {
-                            fsp.appendFile(DATA_DIR + 'req.log', `--Failed--\n${utils.stringifyCirc(req)}\n\n`);
-                        }
+                        debug(`Sending Cached ${key} Response due to request error`);
                     } else {
-                        debug(`Sending Carrier Response to: [POST] ${req.path}`)
-
-                        /* Testing Only */
-                        if (DEBUG) {
-                            fsp.appendFile(DATA_DIR + 'req.log', `**Success*\n${utils.stringifyCirc(req)}\n\n`);
-                        }
+                        debug(`Sending ${key} Response from Carrier [POST] ${req.path}`);
                     }
 
                     res.send(cres.data);
                 })
                 .catch(e => {
-                    res.send('');
                     warnRetCar(`(${key}) Response`, e);
-
-                    /* Testing Only */
-                    if (DEBUG) {
-                        fsp.appendFile(DATA_DIR + 'req.log', `--Failed--\n${utils.stringifyCirc(req)}\n\n`);
-                    }
+                    res.send('');
                 });
         });
 

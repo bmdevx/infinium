@@ -15,6 +15,7 @@ class WebFileCache {
 
         wfc.cacheDir = config.cacheDir || DEFAULT_CACHE_DIR;
         wfc.forwardInterval = config.forwardInterval || DEFAULT_FORDWARD_INTERVAL;
+        wfc.timeout = config.timeout || 1500;
         wfc.cache = new Map();
 
         if (!wfc.cacheDir.endsWith('/')) {
@@ -94,7 +95,7 @@ class WebFileCache {
                 } else {
                     fsp.mkdir(this.cacheDir, { recursive: true })
                         .then(_ => checkAndCreateCacheFile.then())
-                        .catch(_ => console.error(`Unable to creaate ${this.cacheDir} directory`));
+                        .catch(_ => console.error(`Unable to create ${this.cacheDir} directory`));
                 }
             })
             .catch(e => console.error(e));;
@@ -147,11 +148,7 @@ class WebFileCache {
                 }
 
                 if (!req.timeout) {
-                    if (config.timeout) {
-                        req.timeout = config.timeout;
-                    } else {
-                        req.timeout = 1500;
-                    }
+                    req.timeout = config.timeout || this.timeout;
                 }
             }
 
@@ -169,20 +166,18 @@ class WebFileCache {
                 this.cache.set(key, fcc);
             }
 
-            const now = (new Date().getTime() - fcc.lastRetrieved);
+            const now = new Date().getTime();
 
-            if (config.refresh || (now > fcc.forwardInterval)) {
+            if (config.refresh || ((now - fcc.lastRetrieved) > fcc.forwardInterval)) {
                 const method = req.method;
 
                 const getCachedOrReject = (file, err) => {
                     if (fs.existsSync(file)) {
-                        fsp.readFile(file, 'utf8')
-                            .then(data => {
-                                resolve({ data: data, fromWeb: false, error: e });
-                            })
-                            .catch(e => {
-                                reject(err);
-                            });
+                        try {
+                            resolve({ data: fs.readFileSync(file, 'utf8'), fromWeb: false, error: e });
+                        } catch (e) {
+                            reject(err + `: Error opening cached file: ${file} : ${e}`);
+                        }
                     } else {
                         reject(err);
                     }
@@ -207,7 +202,6 @@ class WebFileCache {
                         getCachedOrReject(fcc.file, `Request Error ${method ? `[${method}]` : ''}(${req.url}): ${err}`);
                     }
 
-                    fcc.lastRetrieved = now; // say it went ok even if it fails as their servers have issues
                     this.saveCache();
                 });
             } else if (fs.existsSync(fcc.file)) {

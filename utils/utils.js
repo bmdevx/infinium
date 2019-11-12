@@ -169,7 +169,11 @@ class utils {
         }
 
         if (req.method === 'POST' && req.body) {
-            creq.body = req.body ? (typeof req.body === 'object' ? JSON.stringify(req.body) : req.body) : undefined
+            if (req.body.data && typeof req.body.data === 'string') {
+                creq.body = 'data=' + req.body.data;
+            } else {
+                creq.body = req.body ? (typeof req.body === 'object' ? JSON.stringify(req.body) : req.body) : undefined
+            }
         }
 
         if (req.protocol) {
