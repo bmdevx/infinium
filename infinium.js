@@ -133,13 +133,14 @@ class Infinium {
                 }
 
                 if (KEEP_HISTORY_ON_CHANGE) {
-                    fsp.readFile(file, 'utf8')
+                    fsp.readFile(DATA_DIR + file, 'utf8')
                         .then(fd => {
                             if (fd !== data) {
                                 writeHistoryFile(hfile, data);
                             }
                         })
                         .catch(e => {
+                            error(`Unable to read file ${file} - ${e}`);
                             writeHistoryFile(hfile, data);
                         });;
                 } else {
@@ -476,7 +477,12 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName, timeout: CARRIER_REQUEST_TIMEOUT })
+            cache.get({
+                request: utils.copyRequest(req),
+                fileName: DATA_DIR + fileName,
+                forwardInterval: ONE_HOUR,
+                timeout: CARRIER_REQUEST_TIMEOUT
+            })
                 .then(cres => {
                     notify('release_notes', cres.data);
                 })
@@ -660,14 +666,13 @@ class Infinium {
             const key = req.params.key;
             debug(`Retreiving ${req.params.key}`)
 
-            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}-res.xml`, forwardInterval: ONE_HOUR, timeout: CARRIER_REQUEST_TIMEOUT })
+            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}.xml`, forwardInterval: ONE_HOUR, timeout: CARRIER_REQUEST_TIMEOUT })
                 .then(cres => {
                     if (cres.error) {
                         warnRetCar(`(${key}) Response`, e);
                         debug(`Sending Cached ${key} Response due to request error`);
                     } else {
                         debug(`Sending ${key} Response from Carrier`);
-                        writeIFile(`${key}.xml`, cres.data);
                     }
 
                     res.send(cres.data);
