@@ -28,7 +28,7 @@
     historyExclusions: 'system', // List of files not kept in the history folder. (comma delimited)
     debugMode: false,            // Enable Debugging in the logs
     
-    // Optional. If not in config Infinium defaults to getting weather data from Carrier
+    // Optional. If not in config Infinium defaults to getting weather data from Carrier.
     wunderground {
         apiKey: API_KEY,       // Currently requires a PWS
         
@@ -63,16 +63,22 @@ INFINIUM_TZ = 0  #Sets the timezone if the system does not have it set
 
 
 ### REST
-All data is in JSON Format
+###### Note: for all requests, the default zone is 1
+## 
 ```
-GET   /api/status                   Retreives System Status
-GET   /api/activity/:zone/:activity Retreives Activity Information
-GET   /api/schedule/:zone           Retreives Schedule for the entire Week
-GET   /api/schedule/:zone/:day      Retreives Schedule for a specific Day
-GET   /api/zone/:zone               Retreives Zone Information
+GET   /api/status              Retreives System Status
+GET   /api/activity/:activity  Retreives Activity Information
+      *Optional Parameters*
+          zone: 1-8
+GET   /api/schedule/           Retreives Schedule for the entire Week
+      *Optional Parameters*
+          zone: 1-8
+          day:  monday, tuesday, ..
+GET   /api/zone/:zone          Retreives Zone Information (1-8)
 
-POST  /api/activity/:zone/:activity Updates Activity
+POST  /api/activity/:activity  Updates Activity
       *POST Data Options*
+          zone: (int) 1-8
           clsp: (int) Cooling Set Point, value between min and max
           htsp: (int) Heat Set Point, value between min and max temp
           fan:  (string) Fan Level
@@ -81,30 +87,33 @@ POST  /api/activity/:zone/:activity Updates Activity
                   'med'  Medium Fan Speed
                   'high' High Fan Speed
 
-POST  /api/hold/:zone               Puts a hold on a Zone
+POST  /api/hold                Puts a hold on a Zone
       *POST Data Options*
+          zone:      (int) 1-8
           activity:  (string) Activity for which the system will hold
                        'home' (default), 'away', 'sleep', 'wake', 'manual'
           holdUntil: (string) Time in HH:MM format for which the system will hold the current activity
                        ex: '18:30' (6:30PM)
                        
 POST  /api/schedule/:zone
-      Required JSON Array for 'schedule' value:
-      [
-        {
-          id: 'Monday', //day of week
-          periods: [
+      *Required* JSON Array for 'schedule' value:
+          schedule: [
             {
-              id: 1,            // period in schedule of day (1-5)
-              activity: 'home', // 'home', 'away', 'sleep', 'wake', 'manual'
-              time: '18:30',    // time you want the activity to be ready by
-              enabled: 'on'     // if you want the period to be enabled ('on' or 'off')
+              id: 'Monday', //day of week
+              periods: [
+                {
+                  id: 1,            // period in schedule of day (1-5)
+                  activity: 'home', // 'home', 'away', 'sleep', 'wake', 'manual'
+                  time: '18:30',    // time you want the activity to be ready by
+                  enabled: 'on'     // if you want the period to be enabled ('on' or 'off')
+                },
+                ...
+              ]
             },
             ...
-          ]
-        },
-        ...
-      ]
+          ],
+       *POST Data Options*
+          zone: (int) 1-8
 ```
 
 
@@ -139,7 +148,7 @@ POST  /api/schedule/:zone
  * system
  * utility_events
  * weather
-
+ 
 
 #### Future Features
  * Web mobile friendly interface
