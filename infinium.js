@@ -18,7 +18,7 @@ const ONE_HOUR = 60 * 60 * 1000;
 const CARRIER_REQUEST_TIMEOUT = 3 * 60 * 1000; // It is long since their servers are super slows
 
 const DEFAULT_TZ = 0;
-const DEFAULT_LISTEN_PORT = 3000;
+const DEFAULT_PORT = 3000;
 const DEFAULT_WS_ENABLED = true;
 const DEFAULT_API_ENABLED = true;
 const DEFAULT_KEEP_HISTORY = false;
@@ -61,7 +61,7 @@ class Infinium {
     constructor(config = {}) {
         const infinium = this;
 
-        const PORT = utils.getConfigVar(config.port, process.env.INFINIUM_PORT, DEFAULT_LISTEN_PORT);
+        const PORT = utils.getConfigVar(config.port, process.env.INFINIUM_PORT, DEFAULT_PORT);
         const WS_ENABLED = utils.getConfigVar(config.enableWs, process.env.INFINIUM_WS_ENABLED, DEFAULT_WS_ENABLED);
         const API_ENABLED = utils.getConfigVar(config.enableApi, process.env.INFINIUM_API_ENABLED, DEFAULT_API_ENABLED);
         const KEEP_HISTORY = utils.getConfigVar(config.keepHistory, process.env.INFINIUM_KEEP_HISTORY, DEFAULT_KEEP_HISTORY);
@@ -412,6 +412,7 @@ class Infinium {
         //server 
         server.use(bodyparser.json());
         server.use(bodyparser.urlencoded({ extended: true }));
+        server.use(express.static('web'));
 
 
         server.get('/', (req, res) => {
@@ -813,12 +814,13 @@ class Infinium {
             //Get activity of a Zone
             server.get('/api/activity/:activity', (req, res) => {
                 var zone = 1;
-                if (req.query.zone && !(zone = utils.validateZone(req.query.zone))) {
+
+                if (!infinium.system) {
+                    res.send('System not ready');
+                } else if (req.query.zone && !(zone = utils.validateZone(req.query.zone))) {
                     res.send('Invalid Zone');
                 } else if (!Activities.All.includes(req.params.activity.toLowerCase())) {
                     res.send('Invalid Activity');
-                } else if (!infinium.system) {
-                    res.send('System not ready');
                 } else {
                     var activity = utils.getActivity(infinium.system, zone, req.params.activity);
 
@@ -834,12 +836,12 @@ class Infinium {
             server.get('/api/schedule', (req, res) => {
                 var zone = 1;
 
-                if (req.query.zone && !(zone = utils.validateZone(req.query.zone))) {
+                if (!infinium.system) {
+                    res.send('System not ready');
+                } else if (req.query.zone && !(zone = utils.validateZone(req.query.zone))) {
                     res.send('Invalid Zone');
                 } else if (req.query.day && !utils.validateDay(req.query.day)) {
                     res.send('Invalid Day');
-                } else if (!infinium.system) {
-                    res.send('System not ready');
                 } else {
                     const schedule = (req.query.day) ?
                         utils.getDay(utils.getZone(infinium.system, zone).program, req.query.day) :
@@ -856,12 +858,13 @@ class Infinium {
             //Get all data for a Zone
             server.get('/api/zone/:zone', (req, res) => {
                 var zone;
-                if (!(zone = utils.validateZone(req.params.zone))) {
-                    res.send('Invalid Zone');
-                } else if (!infinium.system) {
+
+                if (!infinium.system) {
                     res.send('System not ready');
+                } else if (!(zone = utils.validateZone(req.params.zone))) {
+                    res.send('Invalid Zone');
                 } else {
-                    var zone = utils.adjustIds(utils.getZone(this.system, zone));
+                    zone = utils.adjustIds(utils.getZone(this.system, zone));
 
                     if (zone) {
                         res.json(utils.adjustIds(zone, true));

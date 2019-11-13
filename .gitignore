@@ -65,3 +65,5 @@ data/
 
 package-lock.json*
 .vscode
+
+resources/
