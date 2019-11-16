@@ -186,7 +186,7 @@ class WebFileCache {
                 request(req, (err, res, data) => {
                     if (!err) {
                         if (res.statusCode === 200) {
-                            fsp.writeFile(fcc.file, data, 'utf8')
+                            fsp.writeFile(fcc.file, data, req.encoding ? req.encoding : 'utf8')
                                 .then(_ => {
                                     fcc.lastRetrieved = new Date().getTime();
                                     this.saveCache();

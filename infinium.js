@@ -119,39 +119,50 @@ class Infinium {
             warn(`Unable to retreive ${what} from Carrier - ${err}`, DEBUG && logToFile);
         };
 
-        const writeIFile = (file, data) => {
+        const writeIFile = (file, data, encoding = 'utf8') => {
+
+            const writeDataFile = (dfile, data, encoding) => {
+                fsp.writeFile(dfile, data, encoding)
+                    .catch(e => error(`Unable to save ${dfile} ${e}`));
+            }
+
+            const DATA_FILE = DATA_DIR + file;
+
             var parts = file.split('/');
             var key = parts[parts.length - 1].split('.')[0];
 
             if (KEEP_HISTORY && !HISTORY_EXCLUSIONS_ARR.includes(key)) {
                 const dt = new Date().toISOStringLocal(TZ).replace(/:/g, '-').replace('T', '_').replace('Z', '');
-                const hfile = `${DATA_HISTORY_DIR}${key}_${dt}.xml`;
+                const HIST_FILE = `${DATA_HISTORY_DIR}${key}_${dt}.xml`;
 
-                const writeHistoryFile = (hf, d) => {
-                    fsp.writeFile(hf, d, 'utf8')
-                        .catch(e => error(`Unable to save ${hfile} - ${e}`));
+                const writeHistoryFile = (hf, d, enc) => {
+                    fsp.writeFile(hf, d, enc)
+                        .catch(e => error(`Unable to save ${HIST_FILE} - ${e}`));
                 }
 
                 if (KEEP_HISTORY_ON_CHANGE) {
-                    fsp.readFile(DATA_DIR + file, 'utf8')
+                    fsp.readFile(DATA_FILE, 'utf8')
                         .then(fd => {
                             if (fd !== data) {
-                                writeHistoryFile(hfile, data);
+                                writeHistoryFile(HIST_FILE, data, encoding);
                             }
+
+                            writeDataFile(DATA_FILE, data, encoding);
                         })
                         .catch(e => {
                             error(`Unable to read file ${file} - ${e}`);
-                            writeHistoryFile(hfile, data);
-                        });;
+                            writeHistoryFile(HIST_FILE, data, encoding);
+                            writeDataFile(DATA_FILE, data, encoding);
+                        });
                 } else {
-                    writeHistoryFile(hfile, data);
+                    writeHistoryFile(HIST_FILE, data, encoding);
+                    writeDataFile(DATA_FILE, data, encoding);
                 }
+            } else {
+                writeDataFile(DATA_FILE, data, encoding);
             }
-
-            fsp.writeFile(DATA_DIR + file, data, 'utf8')
-                .catch(e => error(`Unable to save ${file} ${e}`));
         }
-        const readIFile = (file) => fsp.readFile(DATA_DIR + file, 'utf8');
+        const readIFile = (file, encoding = 'utf8') => fsp.readFile(DATA_DIR + file, encoding);
 
 
         const notify = (name, data, specEventData = null, specBroadcastData = null) => {
@@ -445,13 +456,14 @@ class Infinium {
             debug('Retreiving Manifest');
             cache.get({
                 request: utils.copyRequest(req),
-                fileName: DATA_DIR + 'manifest.xml',
                 forwardInterval: ONE_HOUR,
                 timeout: CARRIER_REQUEST_TIMEOUT
             })
                 .then(cres => {
                     debug(`Sending Manifest from ${(cres.fromWeb ? 'Carrier' : 'Cache')}`);
                     res.send(cres.data);
+
+                    writeIFile('manifest.xml', cres.data);
 
                     parseXml2Json(cres.data)
                         .then(obj => {
@@ -504,17 +516,26 @@ class Infinium {
                 fileName = parts[parts.length - 1];
             }
 
-            cache.get({ request: utils.copyRequest(req), fileName: DATA_DIR + fileName, timeout: CARRIER_REQUEST_TIMEOUT })
-                .then(cres => {
-                    notify('system_update', {
-                        notice: 'System is trying to update itself. Check manifest for details.',
-                        url: utils.buildUrlFromRequest(req),
-                        fileName: fileName
-                    });
-                })
-                .catch(e => warnRetCar('System Firmware', e));
+            // var reqMod = utils.copyRequest(req);
+            // reqMod.encoding = 'binary'
 
-            res.send('');
+            // cache.get({ request: reqMod, fileName: DATA_DIR + fileName, timeout: CARRIER_REQUEST_TIMEOUT })
+            //     .then(cres => {
+            //         notify('system_update', {
+            //             notice: 'System is trying to update itself. Check manifest for details.',
+            //             url: utils.buildUrlFromRequest(req),
+            //             fileName: fileName
+            //         });
+            //     })
+            //     .catch(e => warnRetCar('System Firmware', e));
+
+            notify('system_update', {
+                notice: 'System is trying to update itself. Check manifest for details.',
+                url: utils.buildUrlFromRequest(req),
+                fileName: fileName
+            });
+
+            res.status(200).end();
         });
 
 
@@ -667,13 +688,14 @@ class Infinium {
             const key = req.params.key;
             debug(`Retreiving ${req.params.key}`)
 
-            cache.get({ request: utils.copyRequest(req), fileName: `${DATA_DIR}${key}.xml`, forwardInterval: ONE_HOUR, timeout: CARRIER_REQUEST_TIMEOUT })
+            cache.get({ request: utils.copyRequest(req), forwardInterval: ONE_HOUR, timeout: CARRIER_REQUEST_TIMEOUT })
                 .then(cres => {
                     if (cres.error) {
                         warnRetCar(`(${key}) Response`, e);
                         debug(`Sending Cached ${key} Response due to request error`);
                     } else {
                         debug(`Sending ${key} Response from Carrier`);
+                        writeIFile(`${key}.xml`, cres.data);
                     }
 
                     res.send(cres.data);
@@ -808,6 +830,15 @@ class Infinium {
                     res.json(utils.adjustIds(infinium.status.status));
                 } else {
                     res.send('Status Not Available');
+                }
+            });
+
+            //Get System Config
+            server.get('/api/config', (req, res) => {
+                if (infinium.config) {
+                    res.json(utils.adjustIds(infinium.config.config));
+                } else {
+                    res.send('Config Not Available');
                 }
             });
 

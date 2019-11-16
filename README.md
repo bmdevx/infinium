@@ -63,20 +63,28 @@ INFINIUM_TZ = 0  #Sets the timezone if the system does not have it set
 
 
 ### REST
-###### Note: for all requests, the default zone is 1
+###### Notes:
+###### - For all requests, the default zone is 1
+###### - POST data is urlencoded
 ## 
 ```
 GET   /api/status              Retreives System Status
+
+GET   /api/config              Retreives System Config
+
 GET   /api/activity/:activity  Retreives Activity Information
       *Optional Parameters*
           zone: 1-8
-GET   /api/schedule/           Retreives Schedule for the entire Week
+
+GET   /api/schedule/           Retreives System Schedule (Week or Specific Day)
       *Optional Parameters*
           zone: 1-8
           day:  monday, tuesday, ..
+
 GET   /api/zone/:zone          Retreives Zone Information (1-8)
 
-POST  /api/activity/:activity  Updates Activity
+
+POST  /api/activity/:activity  Updates an Activity
       *POST Data Options*
           zone: (int) 1-8
           clsp: (int) Cooling Set Point, value between min and max
@@ -95,7 +103,7 @@ POST  /api/hold                Puts a hold on a Zone
           holdUntil: (string) Time in HH:MM format for which the system will hold the current activity
                        ex: '18:30' (6:30PM)
                        
-POST  /api/schedule/:zone
+POST  /api/schedule/:zone      Updates the schedule of a zone
       *Required* JSON Array for 'schedule' value:
           schedule: [
             {
