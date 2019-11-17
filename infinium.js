@@ -9,6 +9,7 @@ const utils = require('./utils/utils.js')
 const WebFileCache = require('./utils/web-file-cache.js');
 const CarrierWeatherProvider = require('./utils/carrier-weather-provider.js');
 const WundergroundWeatherProvider = require('./utils/wunderground-weather-provider.js');
+const path = require('path');
 
 const DEBUG_MODE = false;
 
@@ -185,6 +186,7 @@ class Infinium {
             }
         };
 
+        const jpath = (p) => path.join(__dirname, p);
 
         const cache = new WebFileCache({ cacheDir: CACHE_DIR, forwardInterval: FORWARD_INTERVAL });
         const server = express();
@@ -420,15 +422,12 @@ class Infinium {
             .catch(e => warn(e));
 
 
-        //server 
+        //server
         server.use(bodyparser.json());
         server.use(bodyparser.urlencoded({ extended: true }));
-        server.use(express.static('web'));
-
 
         server.get('/', (req, res) => {
-            //main page
-            res.send('Infinium');
+            res.redirect('/admin');
         });
 
 
@@ -813,14 +812,6 @@ class Infinium {
             }
         });
 
-        //Catch for all other requests
-        server.all('/:key', (req, res) => {
-            var msg = `Unknown Request${req.method ? ` (${req.method})` : ''}: /${req.params['key']}`;
-            debug(msg, true, true);
-            res.statusMessage = "Invalid Request";
-            res.status(400).end();
-        });
-
 
         //Infinium REST API
         if (API_ENABLED) {
@@ -1036,13 +1027,26 @@ class Infinium {
             });
         }
 
-        if (KEEP_HISTORY && !fs.existsSync(DATA_HISTORY_DIR)) {
-            try {
-                fs.mkdirSync(DATA_HISTORY_DIR, { recursive: true });
-            } catch (e) {
-                error(`Unable to create ${DATA_HISTORY_DIR}: ${e}`);
-            }
-        }
+
+        //Admin
+        server.set('view engine', 'pug');
+        server.set('views', jpath('web'));
+        server.get('/admin', (req, res) => res.render('index.pug'));
+        server.get('/favicon.ico', (req, res) => res.sendFile(jpath('web/favicon.ico')));
+        server.use('/admin', express.static(jpath('web')));
+        server.use('/dist', express.static(jpath('node_modules/admin-lte/dist')));
+        server.use('/plugins', express.static(jpath('node_modules/admin-lte/plugins')));
+        server.use('/pages', express.static(jpath('node_modules/admin-lte/pages')));
+        server.use('/admin2', express.static(jpath('node_modules/admin-lte')));
+
+
+        //Catch for all other requests
+        server.all('/:key', (req, res) => {
+            var msg = `Unknown Request${req.method ? ` (${req.method})` : ''}: /${req.params['key']}`;
+            debug(msg, true, true);
+            res.statusMessage = "Invalid Request";
+            res.status(400).end();
+        });
 
         server.all('/*', (req, res) => {
             res.statusMessage = "Invalid Request";
@@ -1064,6 +1068,15 @@ class Infinium {
 
         if (!infinium.weatherProvider) {
             infinium.weatherProvider = new CarrierWeatherProvider();
+        }
+
+
+        if (KEEP_HISTORY && !fs.existsSync(DATA_HISTORY_DIR)) {
+            try {
+                fs.mkdirSync(DATA_HISTORY_DIR, { recursive: true });
+            } catch (e) {
+                error(`Unable to create ${DATA_HISTORY_DIR}: ${e}`);
+            }
         }
     }
 
