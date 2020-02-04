@@ -18,7 +18,7 @@
 
 ### Config Example
 
-```json
+```js
 {
     port: 3000,                  // Server Port
     wsEnabled: true,             // WebSockets Enabled
