@@ -426,11 +426,6 @@ class Infinium {
         server.use(bodyparser.json());
         server.use(bodyparser.urlencoded({ extended: true }));
 
-        server.get('/', (req, res) => {
-            res.redirect('/admin');
-        });
-
-
         /* Thermostat Requests */
         server.get('/Alive', (req, res) => {
             debug('Sending Alive');
@@ -1026,19 +1021,6 @@ class Infinium {
                 res.send('Websockets are not enabled.');
             });
         }
-
-
-        //Admin
-        server.set('view engine', 'pug');
-        server.set('views', jpath('web'));
-        server.get('/admin', (req, res) => res.render('index.pug'));
-        server.get('/favicon.ico', (req, res) => res.sendFile(jpath('web/favicon.ico')));
-        server.use('/admin', express.static(jpath('web')));
-        server.use('/dist', express.static(jpath('node_modules/admin-lte/dist')));
-        server.use('/plugins', express.static(jpath('node_modules/admin-lte/plugins')));
-        server.use('/pages', express.static(jpath('node_modules/admin-lte/pages')));
-        server.use('/admin2', express.static(jpath('node_modules/admin-lte')));
-
 
         //Catch for all other requests
         server.all('/:key', (req, res) => {

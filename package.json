@@ -9,12 +9,10 @@
   "author": "bmdevx",
   "license": "GNU GPL3",
   "dependencies": {
-    "admin-lte": "^3.0.0",
     "body-parser": "^1.19.0",
     "events": "^3.0.0",
     "express": "^4.17.1",
     "express-ws": "^4.0.0",
-    "pug": "^2.0.4",
     "request": "^2.88.0",
     "xml2js": "^0.4.22"
   },
@@ -27,5 +25,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/bmdevx/infinium.git"
+  },
+  "devDependencies": {
+    "admin-lte": "^3.0.2",
+    "pug": "^2.0.4"
   }
 }
