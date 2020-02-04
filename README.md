@@ -1,5 +1,7 @@
 # Infinium
 
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/bmdevx/infinium/npm-publish?style=flat-square) ![David](https://img.shields.io/david/bmdevx/infinium?style=flat-square)  ![npm](https://img.shields.io/npm/dt/infinium?style=flat-square) ![npm](https://img.shields.io/npm/v/ninfinium?style=flat-square) ![GitHub](https://img.shields.io/github/license/bmdevx/infinium?style=flat-square)
+
 ## Infinium is a passive monitor and controller for Carrier Infinity Touch thermostats written using NodeJS
 
 ### Features
