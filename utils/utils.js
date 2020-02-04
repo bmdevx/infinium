@@ -188,8 +188,21 @@ class utils {
     }
 
     static getConfigVar(cv, ev, dv) {
-        return cv !== undefined ? cv :
+        var val = cv !== undefined ? cv :
             (ev !== undefined ? ev : dv);
+
+        var num;
+
+        if (typeof val === 'string') {
+            if (val.toLowerCase() === 'true')
+                return true
+            else if (val.toLowerCase() === 'false')
+                return false;
+            else if (!isNaN(num = Number.parseInt(val)) || !isNaN(num = Number.parseFloat(val)))
+                return num;
+        }
+
+        return val;
     }
 
     static getEmptyCarrierResponse(responseName) {

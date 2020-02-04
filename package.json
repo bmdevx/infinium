@@ -1,6 +1,6 @@
 {
   "name": "infinium",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Infinity Touch Thermostat Passive Monitor and Controller",
   "main": "launch.js",
   "directories": {
@@ -25,5 +25,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/bmdevx/infinium.git"
+  },
+  "devDependencies": {
+    "admin-lte": "^3.0.2",
+    "pug": "^2.0.4"
   }
 }

@@ -1,22 +1,24 @@
 # Infinium
 
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/bmdevx/infinium/npm-publish?style=flat-square) ![David](https://img.shields.io/david/bmdevx/infinium?style=flat-square)  ![npm](https://img.shields.io/npm/dt/infinium?style=flat-square) ![npm](https://img.shields.io/npm/v/ninfinium?style=flat-square) ![GitHub](https://img.shields.io/github/license/bmdevx/infinium?style=flat-square)
 
-### Infinium is a passive monitor and controller for Carrier Infinity Touch thermostats written using NodeJS
+## Infinium is a passive monitor and controller for Carrier Infinity Touch thermostats written using NodeJS
 
+### Features
 
-##### Features
-  * Monitor all data in and out of an infinity system
-  * Set and control the infinity touch control thermostat
-  * Wunderground Support (Beta)
- 
+* Monitor all data in and out of an infinity system
+* Set and control the infinity touch control thermostat
+* Wunderground Support (Beta)
 
-#### Control / View Using
-  * REST API
-  * WebSockets
-  * Class Functions
+### Control / View Using
+
+* REST API
+* WebSockets
+* Class Functions
 
 ### Config Example
-```
+
+```js
 {
     port: 3000,                  // Server Port
     wsEnabled: true,             // WebSockets Enabled
@@ -27,15 +29,15 @@
     keepHistoryOnChange: true,   // Only create new history file if the data has changed
     historyExclusions: 'system', // List of files not kept in the history folder. (comma delimited)
     debugMode: false,            // Enable Debugging in the logs
-    
+
     // Optional. If not in config Infinium defaults to getting weather data from Carrier.
     wunderground {
         apiKey: API_KEY,       // Currently requires a PWS
-        
+
         // Postal | Zip Code Option
         postalCode: 1001,      // Zip Code
         countryCode: "US",     // If not in the US
-        
+
         // Geo Location Option
         geoCode: {
             lat: 00.000,       // Latitude
@@ -46,7 +48,8 @@
 ```
 
 ### Enviroment Variables
-```
+
+```bash
 INFINIUM_PORT = 3000
 INFINIUM_WS_ENABLED = true
 INFINIUM_API_ENABLED = true
@@ -61,13 +64,15 @@ INFINIUM_HISTORY_DATA = /data/history/
 INFINIUM_TZ = 0  #Sets the timezone if the system does not have it set
 ```
 
-
 ### REST
-###### Notes:
-###### - For all requests, the default zone is 1
-###### - POST data is urlencoded
-## 
-```
+
+#### Notes
+
+##### - For all requests, the default zone is 1
+
+##### - POST data is urlencoded
+
+```text
 GET   /api/status              Retreives System Status
 
 GET   /api/config              Retreives System Config
@@ -102,7 +107,7 @@ POST  /api/hold                Puts a hold on a Zone
                        'home' (default), 'away', 'sleep', 'wake', 'manual'
           holdUntil: (string) Time in HH:MM format for which the system will hold the current activity
                        ex: '18:30' (6:30PM)
-                       
+
 POST  /api/schedule/:zone      Updates the schedule of a zone
       *Required* JSON Array for 'schedule' value:
           schedule: [
@@ -124,45 +129,47 @@ POST  /api/schedule/:zone      Updates the schedule of a zone
           zone: (int) 1-8
 ```
 
-
 ### WebSocket
-```
+
+```text
 /ws/status      Gets Status
 /ws/config      Gets Config
 /ws/update      Gets all data in the format of { id: 'name of data', data: data }
 /ws/:key        Gets specic data where ':key' is the data type.
 ```
 
-##### Data Events from Infinium
-###### *Some events may not be available depending on your system*
- * config
- * dealer
- * energy
- * energy_star
- * equipment_events
- * history
- * idu_config
- * idu_faults
- * idu_status
- * manifest
- * notifications
- * odu_config
- * odu_faults
- * odu_status
- * profile
- * release_notes
- * root_cause
- * status
- * system
- * utility_events
- * weather
- 
+#### Data Events from Infinium
+
+##### *Some events may not be available depending on your system*
+
+* config
+* dealer
+* energy
+* energy_star
+* equipment_events
+* history
+* idu_config
+* idu_faults
+* idu_status
+* manifest
+* notifications
+* odu_config
+* odu_faults
+* odu_status
+* profile
+* release_notes
+* root_cause
+* status
+* system
+* utility_events
+* weather
 
 #### Future Features
- * Web mobile friendly interface
- * Node-RED and Home-Assistant integration
- * Security Policy (Keys for controlling the thermostat or viewing non-status data from REST/WS)
 
+* Web mobile friendly interface
+* Node-RED and Home-Assistant integration
+* Security Policy (Keys for controlling the thermostat or viewing non-status data from REST/WS)
 
 #### Credits
-I would like to thank nebulous who developed https://github.com/nebulous/infinitude for which this project is based on.
+
+I would like to thank nebulous who developed <https://github.com/nebulous/infinitude> for which this project is based on.
